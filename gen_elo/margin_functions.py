@@ -2,10 +2,9 @@ import jax.numpy as jnp
 from jax import jit, grad, hessian
 from jax.scipy.stats import norm, multivariate_normal
 from jax.scipy.special import expit
-from ml_tools.jax import (weighted_sum, logistic_normal_integral_approx,
-                          pos_def_mat_from_tri_elts)
-from .general import EloFunctions, EloParams
-from ml_tools.lin_alg import num_triangular_elts
+from ml_tools.jax import weighted_sum, logistic_normal_integral_approx
+from .general import EloFunctions
+from ml_tools.flattening import reconstruct
 
 # TODO: Maybe add some of the other optimisation-related stuff
 
@@ -53,27 +52,18 @@ def calculate_log_posterior(x, mu, cov_mat, a, theta, y):
             calculate_prior(x, mu, cov_mat, theta))
 
 
-# TODO: Some of this should probably move into general.
-# I might only have to provide a parse_theta function.
-def update_params(x, params, verbose=True):
+def parse_theta(x, summary):
 
-    n_latent = params.cov_mat.shape[0]
+    theta = reconstruct(x, summary, jnp.reshape)
 
-    cov_mat = pos_def_mat_from_tri_elts(
-        x[:num_triangular_elts(n_latent)], n_latent)
+    theta['factor'] = theta['factor']**2
+    theta['obs_sd'] = theta['obs_sd']**2
 
-    theta = {'factor': x[-3]**2, 'offset': x[-2], 'obs_sd': x[-1]**2}
-
-    params = EloParams(theta=theta, cov_mat=cov_mat)
-
-    if verbose:
-        print(theta)
-        print(cov_mat)
-
-    return params
+    return theta
 
 
 margin_functions = EloFunctions(
     log_post_jac_x=jit(grad(calculate_log_posterior)),
     log_post_hess_x=jit(hessian(calculate_log_posterior)),
-    predictive_lik_fun=calculate_predictive_lik)
+    predictive_lik_fun=calculate_predictive_lik,
+    parse_theta_fun=parse_theta)

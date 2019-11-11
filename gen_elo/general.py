@@ -1,15 +1,21 @@
+import numpy as onp
 import jax.numpy as jnp
-from jax import jit
+from jax import jit, grad
 from functools import partial
 from jax.ops import index_update
 from jax.lax import scan
 from collections import namedtuple
+from scipy.optimize import minimize
+from ml_tools.lin_alg import num_triangular_elts
+from ml_tools.jax import pos_def_mat_from_tri_elts
+from ml_tools.flattening import flatten_and_summarise, reconstruct_np
 
 
 # TODO: Make a function which gets the final results out
 
-EloFunctions = namedtuple('EloConfig',
-                          'log_post_jac_x,log_post_hess_x,predictive_lik_fun')
+EloFunctions = namedtuple('EloFunctions',
+                          'log_post_jac_x,log_post_hess_x,predictive_lik_fun'
+                          ',parse_theta_fun')
 EloParams = namedtuple('EloParams', 'theta,cov_mat')
 
 
@@ -43,7 +49,6 @@ def compute_update(mu1, mu2, a, y, elo_functions, elo_params):
     return new_mu1, new_mu2, lik
 
 
-@partial(jit, static_argnums=2)
 def update_ratings(carry, x, elo_functions, elo_params):
 
     cur_winner, cur_loser, cur_a, cur_y = x
@@ -69,3 +74,75 @@ def calculate_ratings_scan(winners_array, losers_array, a_full, y_full,
                                              a_full, y_full])
 
     return ratings, jnp.sum(liks)
+
+
+def get_starting_elts(cov_mat):
+
+    L = jnp.linalg.cholesky(cov_mat)
+    elts = L[onp.tril_indices_from(L)]
+
+    return elts
+
+
+def update_params(x, params, functions, summaries, verbose=True):
+
+    n_latent = params.cov_mat.shape[0]
+
+    # TODO: Allow for covariance matrix to be different, e.g. allow
+    # independences
+    cov_mat = pos_def_mat_from_tri_elts(
+        x[:num_triangular_elts(n_latent)], n_latent)
+
+    theta = functions.parse_theta_fun(x[num_triangular_elts(n_latent):],
+                                      summaries)
+
+    params = EloParams(theta=theta, cov_mat=cov_mat)
+
+    if verbose:
+        print(theta)
+        print(cov_mat)
+
+    return params
+
+
+def ratings_lik(*args):
+
+    return calculate_ratings_scan(*args)[1]
+
+
+def to_optimise(x, start_params, functions, winners_array, losers_array,
+                a_full, y_full, summaries, n_players, verbose=True):
+
+    params = update_params(x, start_params, functions, summaries,
+                           verbose=verbose)
+
+    init = jnp.zeros((n_players, a_full.shape[1] // 2))
+
+    cur_lik = ratings_lik(winners_array, losers_array, a_full, y_full,
+                          functions, params, init)
+
+    return -cur_lik
+
+
+def optimise_elo(start_params, functions, winners_array, losers_array, a_full,
+                 y_full, n_players, tol=1e-3, verbose=True):
+
+    theta_flat, theta_summary = flatten_and_summarise(**start_params.theta)
+    start_cov_mat = get_starting_elts(start_params.cov_mat)
+
+    start_elts = jnp.concatenate([start_cov_mat, theta_flat])
+
+    minimize_fun = partial(to_optimise, start_params=start_params,
+                           functions=functions, winners_array=winners_array,
+                           losers_array=losers_array, a_full=a_full,
+                           y_full=y_full, summaries=theta_summary,
+                           n_players=n_players)
+
+    minimize_grad = jit(grad(minimize_fun))
+
+    result = minimize(minimize_fun, start_elts, jac=minimize_grad, tol=tol)
+
+    final_params = update_params(result.x, start_params, functions,
+                                 theta_summary, verbose=False)
+
+    return final_params, result.success
