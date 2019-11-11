@@ -5,3 +5,4 @@
 * Also, it would be nice to be able to evaluate this model against others in a
   standardised way. I could incorporate it into my old `tpr` framework, or just
   have some standard functions to evaluate models...? Something to think about.
+* Also, add functions to predict.
