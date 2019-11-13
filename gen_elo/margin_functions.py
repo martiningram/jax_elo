@@ -10,7 +10,7 @@ from ml_tools.flattening import reconstruct
 
 
 @jit
-def calculate_likelihood(x, a, theta, y):
+def calculate_likelihood(x, mu, a, theta, y):
 
     margin = y[0]
 
@@ -23,7 +23,7 @@ def calculate_likelihood(x, a, theta, y):
 
 
 @jit
-def calculate_predictive_lik(x, a, cov_mat, theta, y):
+def calculate_predictive_lik(x, mu, a, cov_mat, theta, y):
 
     margin = y[0]
 
@@ -48,7 +48,7 @@ def calculate_prior(x, mu, cov_mat, theta):
 @jit
 def calculate_log_posterior(x, mu, cov_mat, a, theta, y):
 
-    return (calculate_likelihood(x, a, theta, y) +
+    return (calculate_likelihood(x, mu, a, theta, y) +
             calculate_prior(x, mu, cov_mat, theta))
 
 

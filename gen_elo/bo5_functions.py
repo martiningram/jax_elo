@@ -9,9 +9,9 @@ from .margin_functions import calculate_prior
 
 
 @jit
-def calculate_likelihood_bo5(x, a, theta, y):
+def calculate_likelihood_bo5(x, mu, a, theta, y):
 
-    margin, is_bo5 = y
+    margin, is_bo5, is_retirement = y
 
     logit = a @ x
 
@@ -22,13 +22,24 @@ def calculate_likelihood_bo5(x, a, theta, y):
 
     win_prob = jnp.log(expit(logit_prob))
 
-    return margin_prob + win_prob
+    _, a_loser = jnp.split(a, 2)
+    _, x_loser = jnp.split(x, 2)
+    _, mu_loser = jnp.split(mu, 2)
+
+    loser_skill = -a_loser @ x_loser
+    loser_mean_skill = -a_loser @ mu_loser
+
+    retirement_prob = jnp.log(expit(-theta['ret_factor'] * (
+        loser_mean_skill - loser_skill)))
+
+    return is_retirement * retirement_prob + \
+        (1 - is_retirement) * (margin_prob + win_prob)
 
 
 @jit
-def calculate_predictive_lik_bo5(x, a, cov_mat, theta, y):
+def calculate_predictive_lik_bo5(x, mu, a, cov_mat, theta, y):
 
-    margin, is_bo5 = y
+    margin, is_bo5, is_retirement = y
 
     latent_mean, latent_var = weighted_sum(x, cov_mat, a)
 
@@ -44,7 +55,23 @@ def calculate_predictive_lik_bo5(x, a, cov_mat, theta, y):
 
     win_prob = bo3_prob + bo5_prob
 
-    return win_prob + margin_prob
+    _, a_loser = jnp.split(a, 2)
+    _, x_loser = jnp.split(x, 2)
+    _, mu_loser = jnp.split(mu, 2)
+    a_loser = -a_loser
+
+    loser_skill, loser_var = weighted_sum(x_loser, cov_mat[a.shape[0] // 2:,
+                                                           a.shape[0] // 2:],
+                                          a_loser)
+
+    loser_skill_mu = a_loser @ mu_loser
+
+    retirement_prob = jnp.log(logistic_normal_integral_approx(
+        -theta['ret_factor'] * (loser_skill_mu - loser_skill),
+        theta['ret_factor']**2 * loser_var))
+
+    return is_retirement * retirement_prob +\
+        (1 - is_retirement) * (win_prob + margin_prob)
 
 
 def parse_theta(x, summary):
@@ -61,7 +88,7 @@ def parse_theta(x, summary):
 @jit
 def calculate_log_posterior(x, mu, cov_mat, a, theta, y):
 
-    return (calculate_likelihood_bo5(x, a, theta, y) +
+    return (calculate_likelihood_bo5(x, mu, a, theta, y) +
             calculate_prior(x, mu, cov_mat, theta))
 
 

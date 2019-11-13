@@ -22,7 +22,8 @@ EloParams = namedtuple('EloParams', 'theta,cov_mat')
 @partial(jit, static_argnums=4)
 def calculate_update(mu, cov_mat, a, y, elo_functions, elo_params):
 
-    lik = elo_functions.predictive_lik_fun(mu, a, cov_mat, elo_params.theta, y)
+    lik = elo_functions.predictive_lik_fun(mu, mu, a, cov_mat,
+                                           elo_params.theta, y)
 
     # Evaluate Jacobian and Hessian at the current guess
     mode_jac = elo_functions.log_post_jac_x(mu, mu, cov_mat, a,
