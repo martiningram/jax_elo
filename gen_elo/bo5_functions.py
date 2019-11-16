@@ -32,10 +32,13 @@ def calculate_likelihood_bo5(x, mu, a, theta, y):
     winner_mean_skill = a_winner @ mu_winner
 
     retirement_prob = expit(-theta['ret_factor'] * (
-        loser_skill - loser_mean_skill) + theta['ret_intercept'])
+        loser_skill - loser_mean_skill) -
+        theta['skill_ret_multiplier'] * jnp.maximum(0., loser_mean_skill)
+        + theta['ret_intercept'])
 
     retirement_prob_winner = expit(
         -theta['ret_factor'] * (winner_skill - winner_mean_skill)
+        - theta['skill_ret_multiplier'] * jnp.maximum(0., winner_mean_skill)
         + theta['ret_intercept'])
 
     # Should add factor here about winner _not_ retiring.
@@ -82,12 +85,14 @@ def calculate_predictive_lik_bo5(x, mu, a, cov_mat, theta, y):
     winner_skill_mu = a_winner @ mu_winner
 
     retirement_prob = logistic_normal_integral_approx(
-        -theta['ret_factor'] * (loser_skill - loser_skill_mu)
+        -theta['ret_factor'] * (loser_skill - loser_skill_mu) -
+        theta['skill_ret_multiplier'] * jnp.maximum(loser_skill_mu, 0.)
         + theta['ret_intercept'],
         theta['ret_factor']**2 * loser_var)
 
     retirement_prob_winner = logistic_normal_integral_approx(
-        -theta['ret_factor'] * (winner_skill - winner_skill_mu)
+        -theta['ret_factor'] * (winner_skill - winner_skill_mu) -
+        theta['skill_ret_multiplier'] * jnp.maximum(0., winner_skill_mu)
         + theta['ret_intercept'], theta['ret_factor']**2 * winner_var)
 
     retirement_lik = is_retirement * jnp.log(retirement_prob) + (
