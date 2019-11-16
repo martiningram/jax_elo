@@ -4,11 +4,13 @@ from jax import jit, grad
 from functools import partial
 from jax.ops import index_update
 from jax.lax import scan
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 from scipy.optimize import minimize
 from ml_tools.lin_alg import num_triangular_elts
-from ml_tools.jax import pos_def_mat_from_tri_elts
+from ml_tools.jax import (pos_def_mat_from_tri_elts, weighted_sum,
+                          logistic_normal_integral_approx)
 from ml_tools.flattening import flatten_and_summarise, reconstruct_np
+from tqdm import tqdm_notebook
 
 
 # TODO: Make a function which gets the final results out
@@ -37,11 +39,24 @@ def calculate_update(mu, cov_mat, a, y, elo_functions, elo_params):
     return new_x + mu, lik
 
 
+@jit
+def calculate_win_prob(mu1, mu2, a, cov_mat):
+
+    full_mu = jnp.concatenate([mu1, mu2])
+    full_cov_mat = jnp.kron(jnp.eye(2), cov_mat)
+
+    latent_mean, latent_var = weighted_sum(full_mu, full_cov_mat, a)
+
+    return logistic_normal_integral_approx(latent_mean, latent_var)
+
+
 @partial(jit, static_argnums=4)
 def compute_update(mu1, mu2, a, y, elo_functions, elo_params):
 
     mu = jnp.concatenate([mu1, mu2])
     cov_full = jnp.kron(jnp.eye(2), elo_params.cov_mat)
+
+    # TODO: The name clash isn't good. Update this.
     new_mu, lik = calculate_update(mu, cov_full, a, y, elo_functions,
                                    elo_params)
 
@@ -76,6 +91,34 @@ def calculate_ratings_scan(winners_array, losers_array, a_full, y_full,
 
     return ratings, jnp.sum(liks)
 
+
+def calculate_ratings_history(winners, losers, a_full, y_full, elo_functions,
+                              elo_params):
+
+    ratings = defaultdict(lambda: jnp.zeros(a_full.shape[1] // 2))
+    history = list()
+
+    for cur_winner, cur_loser, cur_a, cur_y in zip(
+            tqdm_notebook(winners), losers, a_full, y_full):
+
+        mu1, mu2 = ratings[cur_winner], ratings[cur_loser]
+
+        prior_win_prob = calculate_win_prob(
+            mu1, mu2, cur_a, elo_params.cov_mat)
+
+        new_mu1, new_mu2, lik = compute_update(
+            mu1, mu2, cur_a, cur_y, elo_functions, elo_params)
+
+        history.append({'winner': cur_winner,
+                        'loser': cur_loser,
+                        'prior_mu_winner': mu1,
+                        'prior_mu_loser': mu2,
+                        'prior_win_prob': prior_win_prob})
+
+        ratings[cur_winner] = new_mu1
+        ratings[cur_loser] = new_mu2
+
+    return history
 
 def get_starting_elts(cov_mat):
 
@@ -146,4 +189,4 @@ def optimise_elo(start_params, functions, winners_array, losers_array, a_full,
     final_params = update_params(result.x, start_params, functions,
                                  theta_summary, verbose=False)
 
-    return final_params, result.success
+    return final_params, result

@@ -22,18 +22,28 @@ def calculate_likelihood_bo5(x, mu, a, theta, y):
 
     win_prob = jnp.log(expit(logit_prob))
 
-    _, a_loser = jnp.split(a, 2)
-    _, x_loser = jnp.split(x, 2)
-    _, mu_loser = jnp.split(mu, 2)
+    a_winner, a_loser = jnp.split(a, 2)
+    x_winner, x_loser = jnp.split(x, 2)
+    mu_winner, mu_loser = jnp.split(mu, 2)
 
     loser_skill = -a_loser @ x_loser
     loser_mean_skill = -a_loser @ mu_loser
+    winner_skill = a_winner @ x_winner
+    winner_mean_skill = a_winner @ mu_winner
 
-    retirement_prob = jnp.log(expit(-theta['ret_factor'] * (
-        loser_mean_skill - loser_skill)))
+    retirement_prob = expit(-theta['ret_factor'] * (
+        loser_skill - loser_mean_skill) + theta['ret_intercept'])
 
-    return is_retirement * retirement_prob + \
-        (1 - is_retirement) * (margin_prob + win_prob)
+    retirement_prob_winner = expit(
+        -theta['ret_factor'] * (winner_skill - winner_mean_skill)
+        + theta['ret_intercept'])
+
+    # Should add factor here about winner _not_ retiring.
+    retirement_lik = is_retirement * jnp.log(retirement_prob) + \
+        (1 - is_retirement) * jnp.log(1 - retirement_prob) + \
+        jnp.log(1 - retirement_prob_winner) # winner never retires
+
+    return retirement_lik + (1 - is_retirement) * (margin_prob + win_prob)
 
 
 @jit
@@ -55,9 +65,9 @@ def calculate_predictive_lik_bo5(x, mu, a, cov_mat, theta, y):
 
     win_prob = bo3_prob + bo5_prob
 
-    _, a_loser = jnp.split(a, 2)
-    _, x_loser = jnp.split(x, 2)
-    _, mu_loser = jnp.split(mu, 2)
+    a_winner, a_loser = jnp.split(a, 2)
+    x_winner, x_loser = jnp.split(x, 2)
+    mu_winner, mu_loser = jnp.split(mu, 2)
     a_loser = -a_loser
 
     loser_skill, loser_var = weighted_sum(x_loser, cov_mat[a.shape[0] // 2:,
@@ -66,12 +76,25 @@ def calculate_predictive_lik_bo5(x, mu, a, cov_mat, theta, y):
 
     loser_skill_mu = a_loser @ mu_loser
 
-    retirement_prob = jnp.log(logistic_normal_integral_approx(
-        -theta['ret_factor'] * (loser_skill_mu - loser_skill),
-        theta['ret_factor']**2 * loser_var))
+    winner_skill, winner_var = weighted_sum(
+        x_winner, cov_mat[a.shape[0] // 2:, a.shape[0] // 2:], a_winner)
 
-    return is_retirement * retirement_prob +\
-        (1 - is_retirement) * (win_prob + margin_prob)
+    winner_skill_mu = a_winner @ mu_winner
+
+    retirement_prob = logistic_normal_integral_approx(
+        -theta['ret_factor'] * (loser_skill - loser_skill_mu)
+        + theta['ret_intercept'],
+        theta['ret_factor']**2 * loser_var)
+
+    retirement_prob_winner = logistic_normal_integral_approx(
+        -theta['ret_factor'] * (winner_skill - winner_skill_mu)
+        + theta['ret_intercept'], theta['ret_factor']**2 * winner_var)
+
+    retirement_lik = is_retirement * jnp.log(retirement_prob) + (
+        1 - is_retirement) * jnp.log(1 - retirement_prob) + \
+        jnp.log(1 - retirement_prob_winner) # winner can't have retired
+
+    return retirement_lik + (1 - is_retirement) * (win_prob + margin_prob)
 
 
 def parse_theta(x, summary):
