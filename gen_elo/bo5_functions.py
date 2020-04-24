@@ -3,7 +3,7 @@ from jax import jit, grad, hessian
 from jax.scipy.stats import norm
 from jax.scipy.special import expit
 from ml_tools.jax import weighted_sum, logistic_normal_integral_approx
-from .general import EloFunctions
+from .general import EloFunctions, calculate_win_prob
 from ml_tools.flattening import reconstruct
 from .margin_functions import calculate_prior
 
@@ -44,9 +44,26 @@ def calculate_likelihood_bo5(x, mu, a, theta, y):
     # Should add factor here about winner _not_ retiring.
     retirement_lik = is_retirement * jnp.log(retirement_prob) + \
         (1 - is_retirement) * jnp.log(1 - retirement_prob) + \
-        jnp.log(1 - retirement_prob_winner) # winner never retires
+        jnp.log(1 - retirement_prob_winner)  # winner never retires
 
     return retirement_lik + (1 - is_retirement) * (margin_prob + win_prob)
+
+
+def initialise_theta():
+    # Gives a reasonable initialisation for theta.
+    theta = {
+        'ret_factor': 1.,
+        'skill_ret_multiplier': 0.,
+        'ret_intercept': 0.,
+        'factor': jnp.sqrt(0.1),
+        'offset': 0.1,
+        'obs_sd': jnp.sqrt(0.1),
+        'bo5_factor': 1.
+    }
+
+    theta = {x: jnp.array(y) for x, y in theta.items()}
+
+    return theta
 
 
 @jit
@@ -97,7 +114,7 @@ def calculate_predictive_lik_bo5(x, mu, a, cov_mat, theta, y):
 
     retirement_lik = is_retirement * jnp.log(retirement_prob) + (
         1 - is_retirement) * jnp.log(1 - retirement_prob) + \
-        jnp.log(1 - retirement_prob_winner) # winner can't have retired
+        jnp.log(1 - retirement_prob_winner)  # winner can't have retired
 
     return retirement_lik + (1 - is_retirement) * (win_prob + margin_prob)
 
@@ -124,4 +141,5 @@ margin_functions_bo5 = EloFunctions(
     log_post_jac_x=jit(grad(calculate_log_posterior)),
     log_post_hess_x=jit(hessian(calculate_log_posterior)),
     predictive_lik_fun=calculate_predictive_lik_bo5,
-    parse_theta_fun=parse_theta)
+    parse_theta_fun=parse_theta,
+    win_prob_fun=calculate_win_prob)

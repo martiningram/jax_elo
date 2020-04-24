@@ -3,10 +3,12 @@ from jax import jit, grad, hessian
 from jax.scipy.stats import norm, multivariate_normal
 from jax.scipy.special import expit
 from ml_tools.jax import weighted_sum, logistic_normal_integral_approx
-from .general import EloFunctions
+from .general import EloFunctions, calculate_win_prob
 from ml_tools.flattening import reconstruct
+from functools import partial
 
 # TODO: Maybe add some of the other optimisation-related stuff
+b = jnp.log(10) / 400.
 
 
 @jit
@@ -17,7 +19,7 @@ def calculate_likelihood(x, mu, a, theta, y):
     margin_prob = norm.logpdf(margin, theta['factor'] * (a @ x) +
                               theta['offset'], theta['obs_sd'])
 
-    win_prob = jnp.log(expit(a @ x))
+    win_prob = jnp.log(expit(b * a @ x))
 
     return margin_prob + win_prob
 
@@ -34,7 +36,7 @@ def calculate_predictive_lik(x, mu, a, cov_mat, theta, y):
         jnp.sqrt(theta['obs_sd']**2 + theta['factor']**2 * latent_var))
 
     win_prob = jnp.log(logistic_normal_integral_approx(
-        latent_mean, latent_var))
+        b * latent_mean, b**2 * latent_var))
 
     return win_prob + margin_prob
 
@@ -66,4 +68,5 @@ margin_functions = EloFunctions(
     log_post_jac_x=jit(grad(calculate_log_posterior)),
     log_post_hess_x=jit(hessian(calculate_log_posterior)),
     predictive_lik_fun=calculate_predictive_lik,
-    parse_theta_fun=parse_theta)
+    parse_theta_fun=parse_theta,
+    win_prob_fun=jit(partial(calculate_win_prob, pre_factor=b)))

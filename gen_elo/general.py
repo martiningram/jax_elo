@@ -10,14 +10,14 @@ from ml_tools.lin_alg import num_triangular_elts
 from ml_tools.jax import (pos_def_mat_from_tri_elts, weighted_sum,
                           logistic_normal_integral_approx)
 from ml_tools.flattening import flatten_and_summarise, reconstruct_np
-from tqdm import tqdm_notebook
+from tqdm import tqdm
 
 
 # TODO: Make a function which gets the final results out
 
 EloFunctions = namedtuple('EloFunctions',
                           'log_post_jac_x,log_post_hess_x,predictive_lik_fun'
-                          ',parse_theta_fun')
+                          ',parse_theta_fun,win_prob_fun')
 EloParams = namedtuple('EloParams', 'theta,cov_mat')
 
 
@@ -40,14 +40,15 @@ def calculate_update(mu, cov_mat, a, y, elo_functions, elo_params):
 
 
 @jit
-def calculate_win_prob(mu1, mu2, a, cov_mat):
+def calculate_win_prob(mu1, mu2, a, cov_mat, pre_factor=1.):
 
     full_mu = jnp.concatenate([mu1, mu2])
     full_cov_mat = jnp.kron(jnp.eye(2), cov_mat)
 
     latent_mean, latent_var = weighted_sum(full_mu, full_cov_mat, a)
 
-    return logistic_normal_integral_approx(latent_mean, latent_var)
+    return logistic_normal_integral_approx(
+        pre_factor * latent_mean, pre_factor**2 * latent_var)
 
 
 @partial(jit, static_argnums=4)
@@ -99,11 +100,11 @@ def calculate_ratings_history(winners, losers, a_full, y_full, elo_functions,
     history = list()
 
     for cur_winner, cur_loser, cur_a, cur_y in zip(
-            tqdm_notebook(winners), losers, a_full, y_full):
+            tqdm(winners), losers, a_full, y_full):
 
         mu1, mu2 = ratings[cur_winner], ratings[cur_loser]
 
-        prior_win_prob = calculate_win_prob(
+        prior_win_prob = elo_functions.win_prob_fun(
             mu1, mu2, cur_a, elo_params.cov_mat)
 
         new_mu1, new_mu2, lik = compute_update(
