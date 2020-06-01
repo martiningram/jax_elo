@@ -14,6 +14,18 @@ def _make_1d_a(n_matches):
 
 
 def fit(winners, losers, margins, verbose=False):
+    """Fits a model incorporating the margin of victory.
+
+    Args:
+        winners: The names of the winners, as a numpy array.
+        losers: The names of the losers, as a numpy array.
+        margins: The margins of victory, as a numpy array.
+        verbose: If True, prints the progress of the optimisation.
+
+    Returns:
+    Tuple: The first element will contain the optimal parameters; the second the
+    result from the optimisation routine.
+    """
 
     # a1, a2, sigma_obs as defined in the paper, _except_ that we take the sqrt
     # of a1 and sigma_obs since they will be squared later to make sure they
@@ -50,6 +62,20 @@ def fit(winners, losers, margins, verbose=False):
     return opt_result
 
 def calculate_ratings(parameters, winners, losers, margins):
+    """Calculates ratings given the parameters.
+
+    Args:
+        parameters: The EloParameters to use. Can be found using the fit
+            function.
+        winners: The names of the winners, as a numpy array.
+        losers: The names of the losers, as a numpy array.
+        margins: The margins of victory, as a numpy array.
+    
+    Returns:
+    A Tuple whose first element is a DataFrame containing the ratings before
+    each match, and whose second element is a dictionary of the final ratings
+    for each competitor.
+    """
 
     a_full = _make_1d_a(winners.shape[0])
     y = margins.reshape(-1, 1)
@@ -80,6 +106,20 @@ def calculate_ratings(parameters, winners, losers, margins):
 
 
 def predict(ratings, parameters, player, opponent):
+    """Predicts the win probability of a contest between a player and an
+    opponent.
+    
+    Args:
+        ratings: A dictionary mapping names to ratings, obtained e.g. through
+            calculate_ratings.
+        parameters: The EloParameters to use. Can be found using the fit
+            function.
+        player: The player to predict the win probability for.
+        opponent: The opponent to predict the win probability for.
+    
+    Returns:
+    The win probability for the given player.
+    """
 
     player_rating = jnp.array([ratings[player]])
     opponent_rating = jnp.array([ratings[opponent]])
@@ -92,6 +132,19 @@ def predict(ratings, parameters, player, opponent):
 
 def get_player_skill_history(ratings_df, final_ratings_dict, dates,
                              player_name):
+    """A helper function to extract a player's rating trajectory over time.
+    
+    Args:
+        ratings_df: The DataFrame of ratings obtained through the predict
+            function.
+        final_ratings_dict: The dictionary of final ratings obtained through the
+            predict function.
+        dates: The dates for each match in the ratings_df.
+        player_name: The player whose history to find.
+    
+    Returns:
+    A dictionary mapping dates to the player ratings on those dates.
+    """
 
     relevant = ((ratings_df['winner'] == player_name) |
                 (ratings_df['loser'] == player_name))
