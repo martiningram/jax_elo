@@ -16,8 +16,8 @@ def calculate_likelihood(x, mu, a, theta, y):
 
     margin = y[0]
 
-    margin_prob = norm.logpdf(margin, theta['factor'] * (a @ x) +
-                              theta['offset'], theta['obs_sd'])
+    margin_prob = norm.logpdf(margin, theta['a1'] * (a @ x) + theta['a2'],
+                              theta['sigma_obs'])
 
     win_prob = jnp.log(expit(b * a @ x))
 
@@ -32,8 +32,8 @@ def calculate_predictive_lik(x, mu, a, cov_mat, theta, y):
     latent_mean, latent_var = weighted_sum(x, cov_mat, a)
 
     margin_prob = norm.logpdf(
-        margin, theta['factor'] * (latent_mean) + theta['offset'],
-        jnp.sqrt(theta['obs_sd']**2 + theta['factor']**2 * latent_var))
+        margin, theta['a1'] * (latent_mean) + theta['a2'],
+        jnp.sqrt(theta['sigma_obs']**2 + theta['a1']**2 * latent_var))
 
     win_prob = jnp.log(logistic_normal_integral_approx(
         b * latent_mean, b**2 * latent_var))
@@ -58,8 +58,8 @@ def parse_theta(x, summary):
 
     theta = reconstruct(x, summary, jnp.reshape)
 
-    theta['factor'] = theta['factor']**2
-    theta['obs_sd'] = theta['obs_sd']**2
+    theta['a1'] = theta['a1']**2
+    theta['sigma_obs'] = theta['sigma_obs']**2
 
     return theta
 

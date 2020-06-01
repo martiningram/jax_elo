@@ -14,6 +14,7 @@ from tqdm import tqdm
 
 
 # TODO: Make a function which gets the final results out
+# TODO: Write an explainer on these tuples
 
 EloFunctions = namedtuple('EloFunctions',
                           'log_post_jac_x,log_post_hess_x,predictive_lik_fun'
@@ -23,6 +24,19 @@ EloParams = namedtuple('EloParams', 'theta,cov_mat')
 
 @partial(jit, static_argnums=4)
 def calculate_update(mu, cov_mat, a, y, elo_functions, elo_params):
+    """Calculates the Elo update.
+
+    Args:
+        mu: The prior mean
+        cov_mat: The prior covariance
+        a: The vector mapping from the skill vector to the difference
+        y: The outcome
+        elo_functions: The functions required to compute the update
+        elo_params: The parameters required for the update
+
+    Returns:
+    The new mean, as well as the likelihood of the update, as a tuple.
+    """
 
     lik = elo_functions.predictive_lik_fun(mu, mu, a, cov_mat,
                                            elo_params.theta, y)
@@ -41,6 +55,19 @@ def calculate_update(mu, cov_mat, a, y, elo_functions, elo_params):
 
 @jit
 def calculate_win_prob(mu1, mu2, a, cov_mat, pre_factor=1.):
+    """Calculates the win probability for a match with two competitors.
+
+    Args:
+        mu1: Player 1's mean ratings.
+        mu2: Player 2's mean ratings.
+        a: The vector mapping from the skill vector to the difference in skills
+        cov_mat: The covariance matrix of skills [assumed identical for player 1
+            and player 2].
+        pre_factor: An optional pre-factor multiplying the difference in skills.
+
+    Returns:
+    The win probability of player 1.
+    """
 
     full_mu = jnp.concatenate([mu1, mu2])
     full_cov_mat = jnp.kron(jnp.eye(2), cov_mat)
@@ -52,12 +79,26 @@ def calculate_win_prob(mu1, mu2, a, cov_mat, pre_factor=1.):
 
 
 @partial(jit, static_argnums=4)
-def compute_update(mu1, mu2, a, y, elo_functions, elo_params):
+def concatenate_and_update(mu1, mu2, a, y, elo_functions, elo_params):
+    """Combines mu1 and mu2 into a concatenated vector mu and uses this to
+    calculate updated means mu1' and mu2'.
+    
+    Args:
+        mu1: The winner's mean prior to the match.
+        mu2: The loser's mean prior to the match.
+        a: The vector such that a^T [mu1, mu2] = mu_delta.
+        y: The observed outcomes.
+        elo_functions: The functions required to compute the update
+        elo_params: The parameters required for the update
+
+    Returns:
+    A Tuple with three elements: the first two contain the new means, the last
+    the log likelihood of the result.
+    """
 
     mu = jnp.concatenate([mu1, mu2])
     cov_full = jnp.kron(jnp.eye(2), elo_params.cov_mat)
 
-    # TODO: The name clash isn't good. Update this.
     new_mu, lik = calculate_update(mu, cov_full, a, y, elo_functions,
                                    elo_params)
 
@@ -67,10 +108,26 @@ def compute_update(mu1, mu2, a, y, elo_functions, elo_params):
 
 
 def update_ratings(carry, x, elo_functions, elo_params):
+    """The function to make an update to use in tandem with lax.scan.
+    
+    Args:
+        carry: The carry, which contains the current ratings in array form so
+            that entry [i, j] contains the mean for competitor i on skill j.
+        x: The information required to make the update. This the current winner's
+            index, the current loser's index, the vector mapping from skills to
+            the skill difference a, and the current additional outcome
+            information [e.g. the margin] y.
+        elo_functions: The functions required to compute the update
+        elo_params: The parameters required for the update
+    
+    Returns:
+    A tuple whose first element is the updated carry [i.e. the updated ratings]
+    and whose second element is the likelihood of the current update.
+    """
 
     cur_winner, cur_loser, cur_a, cur_y = x
 
-    new_winner_mean, new_loser_mean, lik = compute_update(
+    new_winner_mean, new_loser_mean, lik = concatenate_and_update(
         carry[cur_winner], carry[cur_loser], cur_a, cur_y, elo_functions,
         elo_params)
 
@@ -83,6 +140,25 @@ def update_ratings(carry, x, elo_functions, elo_params):
 @partial(jit, static_argnums=4)
 def calculate_ratings_scan(winners_array, losers_array, a_full, y_full,
                            elo_functions, elo_params, init):
+    """Calculates the ratings using lax.scan.
+
+    Args:
+        winners_array: Array such that entry i gives the index of the winner of
+            match i.
+        losers_array: Array such that entry i gives the index of the loser of
+            match i.
+        a_full: A matrix of shape [N, 2L] where N is the number of matches and L
+            is the number of skills for each competitor.
+        y_full: The full matrix of observed outcomes in addition to win or loss
+            [e.g. the margin]. It must be of shape [N, N_Y], where N_Y is the
+            number of additional observations [can be zero].
+        elo_functions: The functions required to compute the update
+        elo_params: The parameters required for the update
+    
+    Returns:
+    A Tuple whose first element is the ratings after all the updates, and whose
+    second is the total summed likelihood of all updates.
+    """
 
     fun_to_scan = partial(update_ratings, elo_functions=elo_functions,
                           elo_params=elo_params)
@@ -95,6 +171,25 @@ def calculate_ratings_scan(winners_array, losers_array, a_full, y_full,
 
 def calculate_ratings_history(winners, losers, a_full, y_full, elo_functions,
                               elo_params):
+    """Calculates the full history of ratings.
+
+    Args:
+        winners: The names of the winners, as strings.
+        losers: The names of the losers, as strings.
+        a_full: A matrix of shape [N, 2L] where N is the number of matches and L
+            is the number of skills for each competitor.
+        y_full: The full matrix of observed outcomes in addition to win or loss
+            [e.g. the margin]. It must be of shape [N, N_Y], where N_Y is the
+            number of additional observations [can be zero].
+        elo_functions: The functions required to compute the update
+        elo_params: The parameters required for the update
+    
+    Returns:
+    A list of dictionaries, each entry containing the entries "winner", "loser",
+    giving their names, respectively; the prior mean rating of the winner
+    ["prior_mu_winner"], the prior mean rating of the loser ["prior_mu_loser"],
+    and the prior win probability of the winner ["prior_win_prob"].
+    """
 
     ratings = defaultdict(lambda: jnp.zeros(a_full.shape[1] // 2))
     history = list()
@@ -122,6 +217,8 @@ def calculate_ratings_history(winners, losers, a_full, y_full, elo_functions,
     return history
 
 def get_starting_elts(cov_mat):
+    """A helper function which extracts the lower triangular elements of the
+    cholesky decomposition of the covariance matrix."""
 
     L = jnp.linalg.cholesky(cov_mat)
     elts = L[onp.tril_indices_from(L)]
@@ -130,6 +227,20 @@ def get_starting_elts(cov_mat):
 
 
 def update_params(x, params, functions, summaries, verbose=True):
+    """A helper function which translates the flat parameter vector x into the
+    NamedTuple of EloParams.
+
+    Args:
+        x: The flat vector used by the optimisation routine.
+        params: The old parameter settings.
+        functions: The functions governing the updates
+        summaries: The summaries of array shapes required to convert the flat
+            vector x back into its individual components.
+        verbose: If verbose, prints the new parameter settings.
+
+    Returns:
+    The parameter vector x as the NamedTuple EloParams.
+    """
 
     n_latent = params.cov_mat.shape[0]
 
@@ -149,6 +260,7 @@ def update_params(x, params, functions, summaries, verbose=True):
 
     return params
 
+# TODO: Finish off documentation
 
 def ratings_lik(*args):
 
