@@ -25,7 +25,7 @@ def calculate_likelihood(x, mu, a, theta, y):
 
 
 @jit
-def calculate_predictive_lik(x, mu, a, cov_mat, theta, y):
+def calculate_marginal_lik(x, mu, a, cov_mat, theta, y):
 
     margin = y[0]
 
@@ -54,9 +54,9 @@ def calculate_log_posterior(x, mu, cov_mat, a, theta, y):
             calculate_prior(x, mu, cov_mat, theta))
 
 
-def parse_theta(x, summary):
+def parse_theta(flat_theta, summary):
 
-    theta = reconstruct(x, summary, jnp.reshape)
+    theta = reconstruct(flat_theta, summary, jnp.reshape)
 
     theta['a1'] = theta['a1']**2
     theta['sigma_obs'] = theta['sigma_obs']**2
@@ -67,6 +67,6 @@ def parse_theta(x, summary):
 margin_functions = EloFunctions(
     log_post_jac_x=jit(grad(calculate_log_posterior)),
     log_post_hess_x=jit(hessian(calculate_log_posterior)),
-    predictive_lik_fun=calculate_predictive_lik,
+    marginal_lik_fun=calculate_marginal_lik,
     parse_theta_fun=parse_theta,
     win_prob_fun=jit(partial(calculate_win_prob, pre_factor=b)))

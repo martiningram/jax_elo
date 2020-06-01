@@ -67,7 +67,7 @@ def initialise_theta():
 
 
 @jit
-def calculate_predictive_lik_bo5(x, mu, a, cov_mat, theta, y):
+def calculate_marginal_lik_bo5(x, mu, a, cov_mat, theta, y):
 
     margin, is_bo5, is_retirement = y
 
@@ -140,6 +140,6 @@ def calculate_log_posterior(x, mu, cov_mat, a, theta, y):
 margin_functions_bo5 = EloFunctions(
     log_post_jac_x=jit(grad(calculate_log_posterior)),
     log_post_hess_x=jit(hessian(calculate_log_posterior)),
-    predictive_lik_fun=calculate_predictive_lik_bo5,
+    marginal_lik_fun=calculate_marginal_lik_bo5,
     parse_theta_fun=parse_theta,
     win_prob_fun=calculate_win_prob)

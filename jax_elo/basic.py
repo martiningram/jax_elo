@@ -19,7 +19,7 @@ def calculate_likelihood(x, mu, a, theta, y):
 
 
 @jit
-def calculate_predictive_lik(x, mu, a, cov_mat, theta, y):
+def calculate_marginal_lik(x, mu, a, cov_mat, theta, y):
 
     latent_mean, latent_var = weighted_sum(x, cov_mat, a)
 
@@ -50,6 +50,6 @@ def parse_theta(x, summary):
 basic_functions = EloFunctions(
     log_post_jac_x=jit(grad(calculate_log_posterior)),
     log_post_hess_x=jit(hessian(calculate_log_posterior)),
-    predictive_lik_fun=calculate_predictive_lik,
+    marginal_lik_fun=calculate_marginal_lik,
     parse_theta_fun=parse_theta,
     win_prob_fun=jit(partial(calculate_win_prob, pre_factor=b)))

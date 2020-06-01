@@ -4,7 +4,8 @@ from jax import jit, grad
 from functools import partial
 from jax.ops import index_update
 from jax.lax import scan
-from collections import namedtuple, defaultdict
+from collections import defaultdict
+from typing import NamedTuple, Callable, Dict
 from scipy.optimize import minimize
 from ml_tools.lin_alg import num_triangular_elts
 from ml_tools.jax import (pos_def_mat_from_tri_elts, weighted_sum,
@@ -13,14 +14,62 @@ from ml_tools.flattening import flatten_and_summarise, reconstruct_np
 from tqdm import tqdm
 
 
-# TODO: Make a function which gets the final results out
-# TODO: Write an explainer on these tuples
+class EloParams(NamedTuple):
+    """
+    This Tuple contains the parameters used by Elo.
 
-EloFunctions = namedtuple('EloFunctions',
-                          'log_post_jac_x,log_post_hess_x,predictive_lik_fun'
-                          ',parse_theta_fun,win_prob_fun')
-EloParams = namedtuple('EloParams', 'theta,cov_mat')
+    Args:
+        theta: The parameters used, such as the prior variance.
+        cov_mat: The prior covariance for each competitor.
+    """
 
+    theta: Dict[str, jnp.ndarray]
+    cov_mat: jnp.ndarray
+
+class EloFunctions(NamedTuple):
+    """This Tuple contains the functions determining each update. In detail,
+    they are:
+    
+    Note:
+        The arguments of each function and how to use them are probably best
+        understood by example. Please see the files margin_functions.py or
+        basic.py for how to implement them in practice. These files also show
+        that it is not necessary to compute the Jacobian and Hessian by hand,
+        since JAX can compute them automatically.
+
+    Args:
+        log_post_jac_x: This is the Jacobian of the log posterior density with
+            respect to x, the vector of skill ratings. It is a function taking
+            five arguments. These are the skill vector x, the prior mean mu, the
+            vector a mapping from x to the difference in skills, a dictionary of
+            parameters theta, and an array of additional information y.
+        log_post_hess_x: The Hessian of the log posterior density with respect
+            to x. It takes the same arguments as log_post_jac_x.
+        marginal_lik_fun: This function calculates the log marginal likelihood
+            of an observation. It takes the skill vector x, the prior means mu,
+            the vector a mapping from skills to skill difference, the covariance
+            matrix, the dictionary of parameters theta, and the additional
+            observations y.
+        parse_theta_fun: This function produces the dictionary of parameters
+            theta from a flat vector flat_theta. It takes as its input two
+            parameters, the first being the flat vector, and the second being
+            the summary of shapes as produced for example by
+            flatten_and_summarise. Note that it also has to ensure that the
+            elements of flat_theta are valid, e.g. by squaring parameters that
+            are constrained to be positive.
+        win_prob_fun: The function computing the win probability. This function
+            takes four parameters. The four required arguments are the prior
+            mean for player 1, the prior mean for player 2, the vector a mapping
+            from skills to skill difference, and the covariance matrix of
+            skills.
+    """
+
+    log_post_jac_x: Callable[..., jnp.ndarray]
+    log_post_hess_x: Callable[..., jnp.ndarray]
+    marginal_lik_fun: Callable[..., float]
+    parse_theta_fun: Callable[[jnp.ndarray, Dict[str, jnp.ndarray]],
+                               Dict[str, jnp.ndarray]]
+    win_prob_fun: Callable[..., float]
 
 @partial(jit, static_argnums=4)
 def calculate_update(mu, cov_mat, a, y, elo_functions, elo_params):
@@ -38,8 +87,8 @@ def calculate_update(mu, cov_mat, a, y, elo_functions, elo_params):
     The new mean, as well as the likelihood of the update, as a tuple.
     """
 
-    lik = elo_functions.predictive_lik_fun(mu, mu, a, cov_mat,
-                                           elo_params.theta, y)
+    lik = elo_functions.marginal_lik_fun(
+        mu, mu, a, cov_mat, elo_params.theta, y)
 
     # Evaluate Jacobian and Hessian at the current guess
     mode_jac = elo_functions.log_post_jac_x(mu, mu, cov_mat, a,
@@ -260,36 +309,45 @@ def update_params(x, params, functions, summaries, verbose=True):
 
     return params
 
-# TODO: Finish off documentation
-
-def ratings_lik(*args):
-
-    return calculate_ratings_scan(*args)[1]
-
-
-def to_optimise(x, start_params, functions, winners_array, losers_array,
-                a_full, y_full, summaries, n_players, verbose=True):
-
-    params = update_params(x, start_params, functions, summaries,
-                           verbose=verbose)
-
-    init = jnp.zeros((n_players, a_full.shape[1] // 2))
-
-    cur_lik = ratings_lik(winners_array, losers_array, a_full, y_full,
-                          functions, params, init)
-
-    return -cur_lik
-
-
 def optimise_elo(start_params, functions, winners_array, losers_array, a_full,
                  y_full, n_players, tol=1e-3, verbose=True):
+    """Optimises the parameters for Elo.
+    
+    Args:
+        start_params: The initial parameters for the optimisation.
+        functions: The EloFunctions to use.
+        winners_array: Array such that entry i gives the index of the winner of
+            match i.
+        losers_array: Array such that entry i gives the index of the loser of
+            match i.
+        a_full: A matrix of shape [N, 2L] where N is the number of matches and L
+            is the number of skills for each competitor.
+        y_full: The full matrix of observed outcomes in addition to win or loss
+            [e.g. the margin]. It must be of shape [N, N_Y], where N_Y is the
+            number of additional observations [can be zero].
+        n_players: The number of players.
+        tol: The tolerance required for the optimisation algorithm to terminate.
+        verbose: If True, prints the current settings after each optimisation
+            step.
+    
+    Note:
+        When specifying start_params, please note that they will be passed
+        through ``parse_theta'' on the first iteration. Thus, if parse_theta
+        constrains any parameters e.g. by squaring, please pass in the square
+        root of the desired setting for the parameter. This will hopefully be
+        improved in future.
+    
+    Returns:
+    A Tuple, the first element of which are the optimal parameters found, and
+    the second the result of the optimisation routine [scipy.optimize.minimize].
+    """
 
     theta_flat, theta_summary = flatten_and_summarise(**start_params.theta)
     start_cov_mat = get_starting_elts(start_params.cov_mat)
 
     start_elts = jnp.concatenate([start_cov_mat, theta_flat])
 
-    minimize_fun = partial(to_optimise, start_params=start_params,
+    minimize_fun = partial(_to_optimise, start_params=start_params,
                            functions=functions, winners_array=winners_array,
                            losers_array=losers_array, a_full=a_full,
                            y_full=y_full, summaries=theta_summary,
@@ -303,3 +361,22 @@ def optimise_elo(start_params, functions, winners_array, losers_array, a_full,
                                  theta_summary, verbose=False)
 
     return final_params, result
+
+
+def _ratings_lik(*args):
+
+    return calculate_ratings_scan(*args)[1]
+
+
+def _to_optimise(x, start_params, functions, winners_array, losers_array,
+                a_full, y_full, summaries, n_players, verbose=True):
+
+    params = update_params(x, start_params, functions, summaries,
+                           verbose=verbose)
+
+    init = jnp.zeros((n_players, a_full.shape[1] // 2))
+
+    cur_lik = _ratings_lik(winners_array, losers_array, a_full, y_full,
+                           functions, params, init)
+
+    return -cur_lik
