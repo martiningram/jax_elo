@@ -143,7 +143,7 @@ def get_player_skill_history(ratings_df, final_ratings_dict, dates,
         player_name: The player whose history to find.
     
     Returns:
-    A dictionary mapping dates to the player ratings on those dates.
+    A DataFrame mapping dates to the player ratings on those dates.
     """
 
     relevant = ((ratings_df['winner'] == player_name) |
