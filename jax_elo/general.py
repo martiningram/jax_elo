@@ -219,7 +219,7 @@ def calculate_ratings_scan(winners_array, losers_array, a_full, y_full,
 
 
 def calculate_ratings_history(winners, losers, a_full, y_full, elo_functions,
-                              elo_params):
+                              elo_params, show_progress=True):
     """Calculates the full history of ratings.
 
     Args:
@@ -234,14 +234,18 @@ def calculate_ratings_history(winners, losers, a_full, y_full, elo_functions,
         elo_params: The parameters required for the update
     
     Returns:
-    A list of dictionaries, each entry containing the entries "winner", "loser",
-    giving their names, respectively; the prior mean rating of the winner
-    ["prior_mu_winner"], the prior mean rating of the loser ["prior_mu_loser"],
-    and the prior win probability of the winner ["prior_win_prob"].
+    A Tuple. The first element is a list of dictionaries, each entry containing
+    the entries "winner", "loser", giving their names, respectively; the prior
+    mean rating of the winner ["prior_mu_winner"], the prior mean rating of the
+    loser ["prior_mu_loser"], and the prior win probability of the winner
+    ["prior_win_prob"]. The second element contains a dictionary of the most
+    up-to-date ratings for each player.
     """
 
     ratings = defaultdict(lambda: jnp.zeros(a_full.shape[1] // 2))
     history = list()
+
+    winners = tqdm(winners) if show_progress else winners
 
     for cur_winner, cur_loser, cur_a, cur_y in zip(
             tqdm(winners), losers, a_full, y_full):
@@ -251,7 +255,7 @@ def calculate_ratings_history(winners, losers, a_full, y_full, elo_functions,
         prior_win_prob = elo_functions.win_prob_fun(
             mu1, mu2, cur_a, elo_params.cov_mat)
 
-        new_mu1, new_mu2, lik = compute_update(
+        new_mu1, new_mu2, lik = concatenate_and_update(
             mu1, mu2, cur_a, cur_y, elo_functions, elo_params)
 
         history.append({'winner': cur_winner,
@@ -263,7 +267,7 @@ def calculate_ratings_history(winners, losers, a_full, y_full, elo_functions,
         ratings[cur_winner] = new_mu1
         ratings[cur_loser] = new_mu2
 
-    return history
+    return history, ratings
 
 def get_starting_elts(cov_mat):
     """A helper function which extracts the lower triangular elements of the

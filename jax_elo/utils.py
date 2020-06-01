@@ -1,5 +1,7 @@
 import numpy as np
 from sklearn.preprocessing import LabelEncoder
+from .general import EloParams
+import pandas as pd
 
 
 def encode_players(winners, losers):

@@ -42,7 +42,7 @@ def calculate_log_posterior(x, mu, cov_mat, a, theta, y):
             calculate_prior(x, mu, cov_mat, theta))
 
 
-def parse_theta(x, summary):
+def parse_theta(flat_theta, summary):
 
     return {}
 
