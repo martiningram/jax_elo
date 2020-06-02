@@ -19,8 +19,8 @@ def fit(winners, losers, marks, margins=None, verbose=False):
         verbose: If True, prints the progress of the optimisation.
 
     Returns:
-    Tuple: The first element will contain the optimal parameters; the second the
-    result from the optimisation routine.
+    Tuple: The first element will contain the optimal parameters; the second
+    the result from the optimisation routine.
     """
 
     n_matches = len(winners)
@@ -77,7 +77,7 @@ def calculate_ratings(parameters, winners, losers, marks, margins=None):
         marks: The names of the marks played on. This could e.g. be surfaces in
             tennis.
         margins: The margins of victory, as a numpy array.
-    
+
     Returns:
     A Tuple whose first element is a list containing the ratings before
     each match, and whose second element is a dictionary of the final ratings
@@ -121,7 +121,7 @@ def calculate_ratings(parameters, winners, losers, marks, margins=None):
     final_ratings = {
         player_name: {
             mark_name: cur_rating + 1500 for mark_name, cur_rating in
-                      zip(mark_names, rating_array)}
+            zip(mark_names, rating_array)}
         for player_name, rating_array in final_ratings.items()
     }
 
@@ -131,7 +131,7 @@ def calculate_ratings(parameters, winners, losers, marks, margins=None):
 def predict(ratings, parameters, player, opponent, mark, mark_names):
     """Predicts the win probability of a contest between a player and an
     opponent.
-    
+
     Args:
         ratings: A dictionary mapping names to ratings, obtained e.g. through
             calculate_ratings.
@@ -142,7 +142,7 @@ def predict(ratings, parameters, player, opponent, mark, mark_names):
         mark: The mark played on (e.g. surface in tennis).
         mark_names: The array of different marks used, e.g. as produced by
             calculate_ratings.
-    
+
     Returns:
     The win probability for the given player.
     """
@@ -163,15 +163,15 @@ def predict(ratings, parameters, player, opponent, mark, mark_names):
 def get_player_skill_history(ratings_history, final_ratings_dict, dates,
                              player_name):
     """A helper function to extract a player's rating trajectory over time.
-    
+
     Args:
         ratings_df: The DataFrame of ratings obtained through the predict
             function.
-        final_ratings_dict: The dictionary of final ratings obtained through the
-            predict function.
+        final_ratings_dict: The dictionary of final ratings obtained through
+            the predict function.
         dates: The dates for each match in the ratings_df.
         player_name: The player whose history to find.
-    
+
     Returns:
     A DataFrame mapping dates to the player ratings on those dates, with one
     column for each of the marks the model was fit to.
