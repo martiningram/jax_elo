@@ -1,11 +1,13 @@
+from functools import partial
+
 import jax.numpy as jnp
 from jax import jit, grad, hessian
 from jax.scipy.stats import norm, multivariate_normal
 from jax.scipy.special import expit
-from .normals import weighted_sum, logistic_normal_integral_approx
-from .general import EloFunctions, calculate_win_prob
-from .flattening import reconstruct
-from functools import partial
+
+from jax_elo.core import EloFunctions, calculate_win_prob
+from jax_elo.utils.normals import weighted_sum, logistic_normal_integral_approx
+from jax_elo.utils.flattening import reconstruct
 
 # TODO: Maybe add some of the other optimisation-related stuff
 b = jnp.log(10) / 400.

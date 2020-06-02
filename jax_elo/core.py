@@ -9,8 +9,8 @@ from scipy.optimize import minimize
 from functools import partial
 from tqdm import tqdm
 
-from .normals import weighted_sum, logistic_normal_integral_approx
-from .flattening import flatten_and_summarise, reconstruct_np
+from jax_elo.utils.normals import weighted_sum, logistic_normal_integral_approx
+from jax_elo.utils.flattening import flatten_and_summarise, reconstruct_np
 
 
 class EloParams(NamedTuple):
@@ -387,10 +387,10 @@ def _to_optimise(x, start_params, functions, winners_array, losers_array,
 
 def _pos_def_mat_from_tri_elts(elts, mat_size, jitter=1e-6):
 
-    cov_mat = lo_tri_from_elements(elts, mat_size)
+    cov_mat = _lo_tri_from_elements(elts, mat_size)
     cov_mat = cov_mat @ cov_mat.T
 
-    cov_mat = cov_mat + np.eye(mat_size) * jitter
+    cov_mat = cov_mat + jnp.eye(mat_size) * jitter
 
     return cov_mat
 
@@ -401,3 +401,12 @@ def _num_triangular_elts(mat_size, include_diagonal=True):
         return int(mat_size * (mat_size + 1) / 2)
     else:
         return int(mat_size * (mat_size - 1) / 2)
+
+
+def _lo_tri_from_elements(elements, n):
+
+    L = jnp.zeros((n, n))
+    indices = jnp.tril_indices(L.shape[0])
+    L = index_update(L, indices, elements)
+
+    return L

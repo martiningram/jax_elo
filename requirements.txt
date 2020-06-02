@@ -5,3 +5,5 @@ scipy
 tqdm
 pandas
 scikit-learn
+matplotlib
+toolz

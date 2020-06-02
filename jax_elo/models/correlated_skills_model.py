@@ -1,10 +1,10 @@
 import pandas as pd
 import jax.numpy as jnp
 
-from ..basic import basic_functions
-from ..margin_functions import margin_functions
-from ..general import EloParams, optimise_elo, calculate_ratings_history
-from ..utils import encode_players, encode_marks
+from jax_elo.core import EloParams, optimise_elo, calculate_ratings_history
+from jax_elo.elo_functions.basic import basic_functions
+from jax_elo.elo_functions.margin_functions import margin_functions
+from jax_elo.utils.encoding import encode_players, encode_marks
 
 
 def fit(winners, losers, marks, margins=None, verbose=False):
