@@ -8,6 +8,20 @@ from ..utils import encode_players, encode_marks
 
 
 def fit(winners, losers, marks, margins=None, verbose=False):
+    """Fits the parameters of the correlated skills model.
+
+    Args:
+        winners: The names of the winners, as a numpy array.
+        losers: The names of the losers, as a numpy array.
+        marks: The names of the marks played on. This could e.g. be surfaces in
+            tennis.
+        margins: The margins of victory, as a numpy array. They are optional.
+        verbose: If True, prints the progress of the optimisation.
+
+    Returns:
+    Tuple: The first element will contain the optimal parameters; the second the
+    result from the optimisation routine.
+    """
 
     n_matches = len(winners)
 
@@ -53,6 +67,22 @@ def fit(winners, losers, marks, margins=None, verbose=False):
 
 
 def calculate_ratings(parameters, winners, losers, marks, margins=None):
+    """Calculates ratings given the parameters.
+
+    Args:
+        parameters: The EloParameters to use. Can be found using the fit
+            function.
+        winners: The names of the winners, as a numpy array.
+        losers: The names of the losers, as a numpy array.
+        marks: The names of the marks played on. This could e.g. be surfaces in
+            tennis.
+        margins: The margins of victory, as a numpy array.
+    
+    Returns:
+    A Tuple whose first element is a list containing the ratings before
+    each match, and whose second element is a dictionary of the final ratings
+    for each competitor.
+    """
 
     dummy_marks, mark_names = encode_marks(marks)
     a_full = jnp.concatenate([dummy_marks, -dummy_marks], axis=1)
@@ -99,6 +129,23 @@ def calculate_ratings(parameters, winners, losers, marks, margins=None):
 
 
 def predict(ratings, parameters, player, opponent, mark, mark_names):
+    """Predicts the win probability of a contest between a player and an
+    opponent.
+    
+    Args:
+        ratings: A dictionary mapping names to ratings, obtained e.g. through
+            calculate_ratings.
+        parameters: The EloParameters to use. Can be found using the fit
+            function.
+        player: The player to predict the win probability for.
+        opponent: The opponent to predict the win probability for.
+        mark: The mark played on (e.g. surface in tennis).
+        mark_names: The array of different marks used, e.g. as produced by
+            calculate_ratings.
+    
+    Returns:
+    The win probability for the given player.
+    """
 
     player_rating = jnp.array([ratings[player][x] for x in mark_names])
     opponent_rating = jnp.array([ratings[opponent][x] for x in mark_names])
@@ -115,6 +162,20 @@ def predict(ratings, parameters, player, opponent, mark, mark_names):
 
 def get_player_skill_history(ratings_history, final_ratings_dict, dates,
                              player_name):
+    """A helper function to extract a player's rating trajectory over time.
+    
+    Args:
+        ratings_df: The DataFrame of ratings obtained through the predict
+            function.
+        final_ratings_dict: The dictionary of final ratings obtained through the
+            predict function.
+        dates: The dates for each match in the ratings_df.
+        player_name: The player whose history to find.
+    
+    Returns:
+    A DataFrame mapping dates to the player ratings on those dates, with one
+    column for each of the marks the model was fit to.
+    """
 
     player_history = list()
 
