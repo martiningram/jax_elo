@@ -2,7 +2,7 @@ import jax.numpy as jnp
 from jax import jit, grad, hessian
 from jax.scipy.stats import multivariate_normal
 from jax.scipy.special import expit
-from ml_tools.jax import weighted_sum, logistic_normal_integral_approx
+from .normals import weighted_sum, logistic_normal_integral_approx
 from .general import EloFunctions, calculate_win_prob
 from functools import partial
 

@@ -1,0 +1,7 @@
+numpy
+jax
+jaxlib
+scipy
+tqdm
+pandas
+scikit-learn

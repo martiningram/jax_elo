@@ -1,17 +1,16 @@
 import numpy as onp
 import jax.numpy as jnp
 from jax import jit, grad
-from functools import partial
 from jax.ops import index_update
 from jax.lax import scan
 from collections import defaultdict
 from typing import NamedTuple, Callable, Dict
 from scipy.optimize import minimize
-from ml_tools.lin_alg import num_triangular_elts
-from ml_tools.jax import (pos_def_mat_from_tri_elts, weighted_sum,
-                          logistic_normal_integral_approx)
-from ml_tools.flattening import flatten_and_summarise, reconstruct_np
+from functools import partial
 from tqdm import tqdm
+
+from .normals import weighted_sum, logistic_normal_integral_approx
+from .flattening import flatten_and_summarise, reconstruct_np
 
 
 class EloParams(NamedTuple):
@@ -299,10 +298,10 @@ def update_params(x, params, functions, summaries, verbose=True):
 
     # TODO: Allow for covariance matrix to be different, e.g. allow
     # independences
-    cov_mat = pos_def_mat_from_tri_elts(
-        x[:num_triangular_elts(n_latent)], n_latent)
+    cov_mat = _pos_def_mat_from_tri_elts(
+        x[:_num_triangular_elts(n_latent)], n_latent)
 
-    theta = functions.parse_theta_fun(x[num_triangular_elts(n_latent):],
+    theta = functions.parse_theta_fun(x[_num_triangular_elts(n_latent):],
                                       summaries)
 
     params = EloParams(theta=theta, cov_mat=cov_mat)
@@ -384,3 +383,21 @@ def _to_optimise(x, start_params, functions, winners_array, losers_array,
                            functions, params, init)
 
     return -cur_lik
+
+
+def _pos_def_mat_from_tri_elts(elts, mat_size, jitter=1e-6):
+
+    cov_mat = lo_tri_from_elements(elts, mat_size)
+    cov_mat = cov_mat @ cov_mat.T
+
+    cov_mat = cov_mat + np.eye(mat_size) * jitter
+
+    return cov_mat
+
+
+def _num_triangular_elts(mat_size, include_diagonal=True):
+
+    if include_diagonal:
+        return int(mat_size * (mat_size + 1) / 2)
+    else:
+        return int(mat_size * (mat_size - 1) / 2)

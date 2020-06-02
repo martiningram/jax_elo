@@ -2,9 +2,9 @@ import jax.numpy as jnp
 from jax import jit, grad, hessian
 from jax.scipy.stats import norm, multivariate_normal
 from jax.scipy.special import expit
-from ml_tools.jax import weighted_sum, logistic_normal_integral_approx
+from .normals import weighted_sum, logistic_normal_integral_approx
 from .general import EloFunctions, calculate_win_prob
-from ml_tools.flattening import reconstruct
+from .flattening import reconstruct
 from functools import partial
 
 # TODO: Maybe add some of the other optimisation-related stuff
