@@ -11,12 +11,12 @@ def encode_players(winners, losers):
             encoder.classes_)
 
 
-def get_surface_a(surfaces):
+def encode_marks(marks):
 
     encoder = LabelEncoder()
-    encoded = encoder.fit_transform(surfaces)
-    oh = np.zeros((len(surfaces), len(encoder.classes_)))
+    encoded = encoder.fit_transform(marks)
+    oh = np.zeros((len(marks), len(encoder.classes_)))
 
-    oh[np.arange(len(surfaces)), encoded] = 1
+    oh[np.arange(len(marks)), encoded] = 1
 
     return oh, encoder.classes_
