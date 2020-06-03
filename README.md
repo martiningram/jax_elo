@@ -3,7 +3,7 @@
 This code accompanies the paper "How to extend Elo: A Bayesian perspective", currently under review.
 
 The package allows you to fit the extensions to Elo to margin of victory and
-correlated skills presented in the paper. In addition, it can be extended to other scenarios by defining a set of custom `EloFunction`s.
+correlated skills presented in the paper. In addition, it can be extended to other scenarios by defining a set of custom `EloFunctions`.
 
 ## Getting started
 

@@ -34,9 +34,10 @@ class EloFunctions(NamedTuple):
         The arguments of each function and how to use them are probably best
         understood by example. Please see the files
         elo_functions/margin_functions.py or elo_functions/basic.py for how to
-        implement them in practice. These files also show that it is not
-        necessary to compute the Jacobian and Hessian by hand, since JAX can
-        compute them automatically.
+        implement them in practice, and the jupyter notebook `examples/Best of
+        Five extension example`. These files also show that it is not necessary
+        to compute the Jacobian and Hessian by hand, since JAX can compute them
+        automatically.
 
     Args:
         log_post_jac_x: This is the Jacobian of the log posterior density with
