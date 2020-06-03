@@ -60,10 +60,10 @@ class EloFunctions(NamedTuple):
             elements of flat_theta are valid, e.g. by squaring parameters that
             are constrained to be positive.
         win_prob_fun: The function computing the win probability. This function
-            takes four parameters. The four required arguments are the prior
+            takes four parameters. The five required arguments are the prior
             mean for player 1, the prior mean for player 2, the vector a
-            mapping from skills to skill difference, and the covariance matrix
-            of skills.
+            mapping from skills to skill difference, the vector y with
+            additional variables, and the parameters in Elo.
     """
 
     log_post_jac_x: Callable[..., jnp.ndarray]
@@ -106,7 +106,7 @@ def calculate_update(mu, cov_mat, a, y, elo_functions, elo_params):
 
 
 @jit
-def calculate_win_prob(mu1, mu2, a, cov_mat, pre_factor=1.):
+def calculate_win_prob(mu1, mu2, a, y, elo_params, pre_factor=1.):
     """Calculates the win probability for a match with two competitors.
 
     Args:
@@ -123,7 +123,7 @@ def calculate_win_prob(mu1, mu2, a, cov_mat, pre_factor=1.):
     """
 
     full_mu = jnp.concatenate([mu1, mu2])
-    full_cov_mat = jnp.kron(jnp.eye(2), cov_mat)
+    full_cov_mat = jnp.kron(jnp.eye(2), elo_params.cov_mat)
 
     latent_mean, latent_var = weighted_sum(full_mu, full_cov_mat, a)
 
@@ -257,7 +257,7 @@ def calculate_ratings_history(winners, losers, a_full, y_full, elo_functions,
         mu1, mu2 = ratings[cur_winner], ratings[cur_loser]
 
         prior_win_prob = elo_functions.win_prob_fun(
-            mu1, mu2, cur_a, elo_params.cov_mat)
+            mu1, mu2, cur_a, cur_y, elo_params)
 
         new_mu1, new_mu2, lik = concatenate_and_update(
             mu1, mu2, cur_a, cur_y, elo_functions, elo_params)
@@ -313,8 +313,8 @@ def update_params(x, params, functions, summaries, verbose=True):
     params = EloParams(theta=theta, cov_mat=cov_mat)
 
     if verbose:
-        print(theta)
-        print(cov_mat)
+        print('theta:', theta)
+        print('cov_mat:', cov_mat)
 
     return params
 

@@ -155,7 +155,7 @@ def predict(ratings, parameters, player, opponent, mark, mark_names):
     cur_a = jnp.concatenate([cur_mark_oh, -cur_mark_oh])
 
     win_prob = margin_functions.win_prob_fun(
-        player_rating, opponent_rating, cur_a, parameters.cov_mat)
+        player_rating, opponent_rating, cur_a, [], parameters)
 
     return float(win_prob)
 

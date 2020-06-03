@@ -127,7 +127,7 @@ def predict(ratings, parameters, player, opponent):
     opponent_rating = jnp.array([ratings[opponent]])
 
     win_prob = margin_functions.win_prob_fun(
-        player_rating, opponent_rating, jnp.array([1, -1]), parameters.cov_mat)
+        player_rating, opponent_rating, jnp.array([1, -1]), [], parameters)
 
     return float(win_prob)
 
