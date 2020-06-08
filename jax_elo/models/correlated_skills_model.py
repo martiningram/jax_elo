@@ -1,7 +1,8 @@
 import pandas as pd
 import jax.numpy as jnp
 
-from jax_elo.core import EloParams, optimise_elo, calculate_ratings_history
+from jax_elo.core import (EloParams, optimise_elo, calculate_ratings_history,
+                          get_starting_elts)
 from jax_elo.elo_functions.basic import basic_functions
 from jax_elo.elo_functions.margin_functions import margin_functions
 from jax_elo.utils.encoding import encode_players, encode_marks
@@ -26,11 +27,7 @@ def fit(winners, losers, marks, margins=None, verbose=False):
     n_matches = len(winners)
 
     if margins is None:
-        # TODO: This is inelegant -- the reshaping functions require at least
-        # one element in theta. Fix so we don't need to provide this dummy.
-        start_theta = {
-            'dummy': jnp.array(0.)
-        }
+        start_theta = {}
     else:
         start_theta = {
             'a1': jnp.sqrt(0.01),
@@ -43,10 +40,11 @@ def fit(winners, losers, marks, margins=None, verbose=False):
 
     n_marks = len(mark_names)
     cov_mat = jnp.eye(n_marks) * 100**2
+    start_elts = get_starting_elts(cov_mat)
+    start_theta['cov_mat'] = start_elts
 
     init_params = EloParams(
         theta=start_theta,
-        cov_mat=cov_mat
     )
 
     winner_ids, loser_ids, names = encode_players(winners, losers)

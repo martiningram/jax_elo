@@ -3,7 +3,8 @@ import pandas as pd
 import jax.numpy as jnp
 
 from jax_elo.elo_functions.margin_functions import margin_functions
-from jax_elo.core import EloParams, optimise_elo, calculate_ratings_history
+from jax_elo.core import (
+    EloParams, optimise_elo, calculate_ratings_history, get_starting_elts)
 from jax_elo.utils.encoding import encode_players
 
 
@@ -28,6 +29,9 @@ def fit(winners, losers, margins, verbose=False):
     the result from the optimisation routine.
     """
 
+    cov_mat = jnp.eye(1)
+    cov_mat_elts = get_starting_elts(cov_mat)
+
     # a1, a2, sigma_obs as defined in the paper, _except_ that we take the sqrt
     # of a1 and sigma_obs since they will be squared later to make sure they
     # remain positive.
@@ -35,14 +39,12 @@ def fit(winners, losers, margins, verbose=False):
     start_theta = {
         'a1': jnp.sqrt(0.1),
         'a2': jnp.array(0.),
-        'sigma_obs': jnp.sqrt(0.1)
+        'sigma_obs': jnp.sqrt(0.1),
+        'cov_mat': cov_mat_elts
     }
-
-    cov_mat = jnp.eye(1)
 
     init_params = EloParams(
         theta=start_theta,
-        cov_mat=cov_mat
     )
 
     # Get winner and loser ids

@@ -23,7 +23,6 @@ class EloParams(NamedTuple):
     """
 
     theta: Dict[str, jnp.ndarray]
-    cov_mat: jnp.ndarray
 
 
 class EloFunctions(NamedTuple):
@@ -95,10 +94,10 @@ def calculate_update(mu, cov_mat, a, y, elo_functions, elo_params):
         mu, mu, a, cov_mat, elo_params.theta, y)
 
     # Evaluate Jacobian and Hessian at the current guess
-    mode_jac = elo_functions.log_post_jac_x(mu, mu, cov_mat, a,
-                                            elo_params.theta, y)
-    mode_hess = elo_functions.log_post_hess_x(mu, mu, cov_mat, a,
-                                              elo_params.theta, y)
+    mode_jac = elo_functions.log_post_jac_x(
+        mu, mu, cov_mat, a, elo_params.theta, y)
+    mode_hess = elo_functions.log_post_hess_x(
+        mu, mu, cov_mat, a, elo_params.theta, y)
 
     # Get the updated guess from linearising
     new_x = -jnp.linalg.solve(mode_hess, mode_jac)
@@ -114,8 +113,6 @@ def calculate_win_prob(mu1, mu2, a, y, elo_params, pre_factor=1.):
         mu1: Player 1's mean ratings.
         mu2: Player 2's mean ratings.
         a: The vector mapping from the skill vector to the difference in skills
-        cov_mat: The covariance matrix of skills [assumed identical for player
-            1 and player 2].
         pre_factor: An optional pre-factor multiplying the difference in
             skills.
 
@@ -124,7 +121,7 @@ def calculate_win_prob(mu1, mu2, a, y, elo_params, pre_factor=1.):
     """
 
     full_mu = jnp.concatenate([mu1, mu2])
-    full_cov_mat = jnp.kron(jnp.eye(2), elo_params.cov_mat)
+    full_cov_mat = jnp.kron(jnp.eye(2), elo_params.theta['cov_mat'])
 
     latent_mean, latent_var = weighted_sum(full_mu, full_cov_mat, a)
 
@@ -151,7 +148,7 @@ def concatenate_and_update(mu1, mu2, a, y, elo_functions, elo_params):
     """
 
     mu = jnp.concatenate([mu1, mu2])
-    cov_full = jnp.kron(jnp.eye(2), elo_params.cov_mat)
+    cov_full = jnp.kron(jnp.eye(2), elo_params.theta['cov_mat'])
 
     new_mu, lik = calculate_update(mu, cov_full, a, y, elo_functions,
                                    elo_params)
@@ -301,21 +298,13 @@ def update_params(x, params, functions, summaries, verbose=True):
     The parameter vector x as the NamedTuple EloParams.
     """
 
-    n_latent = params.cov_mat.shape[0]
+    theta = functions.parse_theta_fun(x, summaries)
 
-    # TODO: Allow for covariance matrix to be different, e.g. allow
-    # independences
-    cov_mat = _pos_def_mat_from_tri_elts(
-        x[:_num_triangular_elts(n_latent)], n_latent)
-
-    theta = functions.parse_theta_fun(x[_num_triangular_elts(n_latent):],
-                                      summaries)
-
-    params = EloParams(theta=theta, cov_mat=cov_mat)
+    params = EloParams(theta=theta)
 
     if verbose:
         print('theta:', theta)
-        print('cov_mat:', cov_mat)
+        print('cov_mat:', theta['cov_mat'])
 
     return params
 
@@ -356,9 +345,7 @@ def optimise_elo(start_params, functions, winners_array, losers_array, a_full,
     """
 
     theta_flat, theta_summary = flatten_and_summarise(**start_params.theta)
-    start_cov_mat = get_starting_elts(start_params.cov_mat)
-
-    start_elts = jnp.concatenate([start_cov_mat, theta_flat])
+    start_elts = theta_flat
 
     minimize_fun = partial(_to_optimise, start_params=start_params,
                            functions=functions, winners_array=winners_array,
@@ -393,30 +380,3 @@ def _to_optimise(x, start_params, functions, winners_array, losers_array,
                            functions, params, init)
 
     return -cur_lik
-
-
-def _pos_def_mat_from_tri_elts(elts, mat_size, jitter=1e-6):
-
-    cov_mat = _lo_tri_from_elements(elts, mat_size)
-    cov_mat = cov_mat @ cov_mat.T
-
-    cov_mat = cov_mat + jnp.eye(mat_size) * jitter
-
-    return cov_mat
-
-
-def _num_triangular_elts(mat_size, include_diagonal=True):
-
-    if include_diagonal:
-        return int(mat_size * (mat_size + 1) / 2)
-    else:
-        return int(mat_size * (mat_size - 1) / 2)
-
-
-def _lo_tri_from_elements(elements, n):
-
-    L = jnp.zeros((n, n))
-    indices = jnp.tril_indices(L.shape[0])
-    L = index_update(L, indices, elements)
-
-    return L

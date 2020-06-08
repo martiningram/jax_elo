@@ -8,6 +8,7 @@ from jax.scipy.special import expit
 from jax_elo.core import EloFunctions, calculate_win_prob
 from jax_elo.utils.normals import weighted_sum, logistic_normal_integral_approx
 from jax_elo.utils.flattening import reconstruct
+from jax_elo.utils.linalg import num_mat_elts, pos_def_mat_from_tri_elts
 
 # TODO: Maybe add some of the other optimisation-related stuff
 b = jnp.log(10) / 400.
@@ -59,6 +60,9 @@ def calculate_log_posterior(x, mu, cov_mat, a, theta, y):
 def parse_theta(flat_theta, summary):
 
     theta = reconstruct(flat_theta, summary, jnp.reshape)
+
+    n_elts = num_mat_elts(len(theta['cov_mat']))
+    theta['cov_mat'] = pos_def_mat_from_tri_elts(theta['cov_mat'], n_elts)
 
     theta['a1'] = theta['a1']**2
     theta['sigma_obs'] = theta['sigma_obs']**2
