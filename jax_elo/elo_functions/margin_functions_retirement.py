@@ -37,8 +37,12 @@ def calculate_likelihood(x, mu, a, theta, y):
     loser_expected_skill = loser_a @ loser_mu
     loser_actual_skill = loser_a @ loser_x
 
+    full_ret_factor = theta["ret_factor"] * (
+        1 - theta["skill_factor"] * loser_expected_skill
+    )
+
     ret_prob = expit(
-        theta["ret_factor"] * (loser_expected_skill - loser_actual_skill)
+        full_ret_factor * (loser_expected_skill - loser_actual_skill)
         + theta["ret_intercept"]
     )
 
@@ -80,10 +84,14 @@ def calculate_marginal_lik(x, mu, a, cov_mat, theta, y):
     loser_actual_mean, loser_actual_var = weighted_sum(loser_x, loser_cov_mat, loser_a)
     loser_expected_skill = loser_a @ loser_mu
 
+    full_ret_factor = theta["ret_factor"] * (
+        1 - theta["skill_factor"] * loser_expected_skill
+    )
+
     ret_prob = logistic_normal_integral_approx(
-        theta["ret_factor"] * (loser_expected_skill - loser_actual_mean)
+        full_ret_factor * (loser_expected_skill - loser_actual_mean)
         + theta["ret_intercept"],
-        theta["ret_factor"] ** 2 * loser_actual_var,
+        full_ret_factor ** 2 * loser_actual_var,
     )
 
     prob_retirement = jnp.log(ret_prob)
