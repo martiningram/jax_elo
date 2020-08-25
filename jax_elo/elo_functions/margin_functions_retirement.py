@@ -17,14 +17,14 @@ b = jnp.log(10) / 400.0
 @jit
 def calculate_likelihood(x, mu, a, theta, y):
 
-    margin, was_retirement = y
+    margin, was_retirement, bo5 = y
+
+    sigma_obs = (1 - bo5) * theta["sigma_obs"] + bo5 * theta["sigma_obs_bo5"]
 
     # If it wasn't a retirement:
-    margin_prob = norm.logpdf(
-        margin, theta["a1"] * (a @ x) + theta["a2"], theta["sigma_obs"]
-    )
+    margin_prob = norm.logpdf(margin, theta["a1"] * (a @ x) + theta["a2"], sigma_obs)
 
-    win_prob = jnp.log(expit(b * a @ x))
+    win_prob = jnp.log(expit((1 + theta["bo5_factor"] * bo5) * b * a @ x))
 
     # Otherwise:
     # Only the loser's skill matters:
@@ -38,7 +38,7 @@ def calculate_likelihood(x, mu, a, theta, y):
     loser_actual_skill = loser_a @ loser_x
 
     full_ret_factor = theta["ret_factor"] * (
-        1 - theta["skill_factor"] * loser_expected_skill
+        1 - theta["skill_factor"] * expit(b * loser_expected_skill)
     )
 
     ret_prob = expit(
@@ -57,7 +57,9 @@ def calculate_likelihood(x, mu, a, theta, y):
 @jit
 def calculate_marginal_lik(x, mu, a, cov_mat, theta, y):
 
-    margin, was_retirement = y
+    margin, was_retirement, bo5 = y
+
+    sigma_obs = (1 - bo5) * theta["sigma_obs"] + bo5 * theta["sigma_obs_bo5"]
 
     latent_mean, latent_var = weighted_sum(x, cov_mat, a)
 
@@ -65,11 +67,14 @@ def calculate_marginal_lik(x, mu, a, cov_mat, theta, y):
     margin_prob = norm.logpdf(
         margin,
         theta["a1"] * (latent_mean) + theta["a2"],
-        jnp.sqrt(theta["sigma_obs"] ** 2 + theta["a1"] ** 2 * latent_var),
+        jnp.sqrt(sigma_obs ** 2 + theta["a1"] ** 2 * latent_var),
     )
 
     win_prob = jnp.log(
-        logistic_normal_integral_approx(b * latent_mean, b ** 2 * latent_var)
+        logistic_normal_integral_approx(
+            (1 + theta["bo5_factor"] * bo5) * b * latent_mean,
+            (1 + theta["bo5_factor"] * bo5) ** 2 * b ** 2 * latent_var,
+        )
     )
 
     n_skills = x.shape[0]
@@ -85,7 +90,7 @@ def calculate_marginal_lik(x, mu, a, cov_mat, theta, y):
     loser_expected_skill = loser_a @ loser_mu
 
     full_ret_factor = theta["ret_factor"] * (
-        1 - theta["skill_factor"] * loser_expected_skill
+        1 - theta["skill_factor"] * expit(b * loser_expected_skill)
     )
 
     ret_prob = logistic_normal_integral_approx(
@@ -126,6 +131,8 @@ def parse_theta(flat_theta, summary):
     theta["a1"] = theta["a1"] ** 2
     theta["sigma_obs"] = theta["sigma_obs"] ** 2
     theta["ret_factor"] = theta["ret_factor"] ** 2
+    theta["bo5_factor"] = theta["bo5_factor"] ** 2
+    theta["sigma_obs_bo5"] = theta["sigma_obs_bo5"] ** 2
 
     return theta
 
