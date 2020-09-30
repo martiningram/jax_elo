@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 from jax_elo.utils.normals import weighted_sum, logistic_normal_integral_approx
 from jax_elo.utils.flattening import flatten_and_summarise
+from jax_elo.utils.encoding import encode_players
 
 
 class EloParams(NamedTuple):
@@ -159,7 +160,7 @@ def concatenate_and_update(mu1, mu2, a, y, elo_functions, elo_params):
     return new_mu1, new_mu2, lik
 
 
-def update_ratings(carry, x, elo_functions, elo_params):
+def update_ratings(carry, x, elo_functions, elo_params, additional_functions):
     """The function to make an update to use in tandem with lax.scan.
 
     Args:
@@ -186,12 +187,24 @@ def update_ratings(carry, x, elo_functions, elo_params):
     carry = index_update(carry, cur_winner, new_winner_mean)
     carry = index_update(carry, cur_loser, new_loser_mean)
 
-    return carry, lik
+    results = {"lik": lik}
+
+    for cur_additional_fun in additional_functions:
+        results.update(cur_additional_fun(carry, x))
+
+    return carry, results
 
 
-@partial(jit, static_argnums=4)
+@partial(jit, static_argnums=(4, 7))
 def calculate_ratings_scan(
-    winners_array, losers_array, a_full, y_full, elo_functions, elo_params, init
+    winners_array,
+    losers_array,
+    a_full,
+    y_full,
+    elo_functions,
+    elo_params,
+    init,
+    additional_funs=[],
 ):
     """Calculates the ratings using lax.scan.
 
@@ -214,14 +227,17 @@ def calculate_ratings_scan(
     """
 
     fun_to_scan = partial(
-        update_ratings, elo_functions=elo_functions, elo_params=elo_params
+        update_ratings,
+        elo_functions=elo_functions,
+        elo_params=elo_params,
+        additional_functions=additional_funs,
     )
 
-    ratings, liks = scan(
+    ratings, results = scan(
         fun_to_scan, init, [winners_array, losers_array, a_full, y_full]
     )
 
-    return ratings, jnp.sum(liks)
+    return ratings, results
 
 
 def iterate_dict_of_lists(list_dict):
@@ -235,8 +251,37 @@ def iterate_dict_of_lists(list_dict):
         yield {cur_key: cur_val for cur_key, cur_val in zip(keys, cur_vals)}
 
 
+def extract_history_info(carry, x, elo_params, elo_functions):
+
+    cur_winner, cur_loser, cur_a, cur_y = x
+
+    mu1, mu2 = carry[cur_winner], carry[cur_loser]
+
+    prior_win_prob = elo_functions.win_prob_fun(mu1, mu2, cur_a, cur_y, elo_params)
+
+    prior_mu_match_winner, prior_var_match_winner = weighted_sum(
+        mu1, elo_params.theta["cov_mat"], cur_a[: cur_a.shape[0] // 2]
+    )
+
+    prior_mu_match_loser, prior_var_match_loser = weighted_sum(
+        mu2, elo_params.theta["cov_mat"], -cur_a[cur_a.shape[0] // 2 :]
+    )
+
+    return {
+        "winner": cur_winner,
+        "loser": cur_loser,
+        "prior_mu_winner": mu1,
+        "prior_mu_loser": mu2,
+        "prior_win_prob": prior_win_prob,
+        "prior_mu_match_winner": prior_mu_match_winner,
+        "prior_mu_match_loser": prior_mu_match_loser,
+        "prior_var_match_winner": prior_var_match_winner,
+        "prior_var_match_loser": prior_var_match_loser,
+    }
+
+
 def calculate_ratings_history(
-    winners, losers, a_full, y_full, elo_functions, elo_params, show_progress=True
+    winners, losers, a_full, y_full, elo_functions, elo_params
 ):
     """Calculates the full history of ratings.
 
@@ -260,51 +305,43 @@ def calculate_ratings_history(
     up-to-date ratings for each player.
     """
 
-    ratings = defaultdict(lambda: jnp.zeros(a_full.shape[1] // 2))
-    history = list()
+    # Encode winners and losers
+    winner_ids, loser_ids, names = encode_players(winners, losers)
 
-    winners = tqdm(winners) if show_progress else winners
+    # Compute the init
+    init = _initialise_ratings_scan(
+        winner_ids, loser_ids, y_full, elo_functions.init_fun, elo_params, len(names)
+    )
 
-    y_dict_list = iterate_dict_of_lists(y_full)
-
-    for cur_winner, cur_loser, cur_a, cur_y in zip(
-        tqdm(winners), losers, a_full, y_dict_list
-    ):
-
-        mu1, mu2 = ratings[cur_winner], ratings[cur_loser]
-
-        prior_win_prob = elo_functions.win_prob_fun(mu1, mu2, cur_a, cur_y, elo_params)
-
-        new_mu1, new_mu2, lik = concatenate_and_update(
-            mu1, mu2, cur_a, cur_y, elo_functions, elo_params
+    additional_funs = [
+        partial(
+            extract_history_info, elo_params=elo_params, elo_functions=elo_functions
         )
+    ]
 
-        prior_mu_match_winner, prior_var_match_winner = weighted_sum(
-            mu1, elo_params.theta["cov_mat"], cur_a[: cur_a.shape[0] // 2]
-        )
+    final_ratings, history = calculate_ratings_scan(
+        winner_ids,
+        loser_ids,
+        a_full,
+        y_full,
+        elo_functions,
+        elo_params,
+        init,
+        additional_funs,
+    )
 
-        prior_mu_match_loser, prior_var_match_loser = weighted_sum(
-            mu2, elo_params.theta["cov_mat"], -cur_a[cur_a.shape[0] // 2 :]
-        )
+    # Change ids back to player names
+    player_lookup = {i: x for i, x in enumerate(names)}
 
-        history.append(
-            {
-                "winner": cur_winner,
-                "loser": cur_loser,
-                "prior_mu_winner": mu1,
-                "prior_mu_loser": mu2,
-                "prior_win_prob": prior_win_prob,
-                "prior_mu_match_winner": prior_mu_match_winner,
-                "prior_mu_match_loser": prior_mu_match_loser,
-                "prior_var_match_winner": prior_var_match_winner,
-                "prior_var_match_loser": prior_var_match_loser,
-            }
-        )
+    history["loser"] = [player_lookup[x] for x in history["loser"]]
+    history["winner"] = [player_lookup[x] for x in history["winner"]]
 
-        ratings[cur_winner] = new_mu1
-        ratings[cur_loser] = new_mu2
+    # Turn into list of dictionaries
+    history = list(iterate_dict_of_lists(history))
 
-    return history, ratings
+    final_ratings = {cur_name: x for cur_name, x in zip(names, final_ratings)}
+
+    return final_ratings, history
 
 
 def get_starting_elts(cov_mat):
@@ -418,7 +455,7 @@ def optimise_elo(
 
 def _ratings_lik(*args):
 
-    return calculate_ratings_scan(*args)[1]
+    return jnp.sum(calculate_ratings_scan(*args)[1]["lik"])
 
 
 def _init_scan_function(info, cur_data, init_function, params):
@@ -510,7 +547,7 @@ def _to_optimise(
     )
 
     cur_lik = _ratings_lik(
-        winners_array, losers_array, a_full, y_full, functions, params, init
+        winners_array, losers_array, a_full, y_full, functions, params, init, []
     )
 
     cur_prior = prior_fun(params)
