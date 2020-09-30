@@ -53,7 +53,7 @@ def fit(winners, losers, marks, margins=None, verbose=False):
     n_players = len(names)
 
     if margins is None:
-        y = jnp.zeros((n_matches, 0))
+        y = {"placeholder": jnp.zeros((n_matches, 0))}
         functions = basic_functions
     else:
         y = {"margin": margins}
@@ -90,7 +90,7 @@ def calculate_ratings(parameters, winners, losers, marks, margins=None):
     n_matches = winners.shape[0]
 
     if margins is None:
-        y = jnp.zeros((n_matches, 0))
+        y = {"placeholder": jnp.zeros((n_matches, 0))}
         functions = basic_functions
     else:
         y = {"margin": margins}

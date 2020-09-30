@@ -224,6 +224,17 @@ def calculate_ratings_scan(
     return ratings, jnp.sum(liks)
 
 
+def iterate_dict_of_lists(list_dict):
+
+    keys = list_dict.keys()
+    values = list_dict.values()
+    zipped_values = zip(*values)
+
+    for cur_vals in zipped_values:
+
+        yield {cur_key: cur_val for cur_key, cur_val in zip(keys, cur_vals)}
+
+
 def calculate_ratings_history(
     winners, losers, a_full, y_full, elo_functions, elo_params, show_progress=True
 ):
@@ -254,8 +265,10 @@ def calculate_ratings_history(
 
     winners = tqdm(winners) if show_progress else winners
 
+    y_dict_list = iterate_dict_of_lists(y_full)
+
     for cur_winner, cur_loser, cur_a, cur_y in zip(
-        tqdm(winners), losers, a_full, y_full
+        tqdm(winners), losers, a_full, y_dict_list
     ):
 
         mu1, mu2 = ratings[cur_winner], ratings[cur_loser]
