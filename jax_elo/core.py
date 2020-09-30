@@ -184,13 +184,13 @@ def update_ratings(carry, x, elo_functions, elo_params, additional_functions):
         carry[cur_winner], carry[cur_loser], cur_a, cur_y, elo_functions, elo_params
     )
 
-    carry = index_update(carry, cur_winner, new_winner_mean)
-    carry = index_update(carry, cur_loser, new_loser_mean)
-
     results = {"lik": lik}
 
     for cur_additional_fun in additional_functions:
         results.update(cur_additional_fun(carry, x))
+
+    carry = index_update(carry, cur_winner, new_winner_mean)
+    carry = index_update(carry, cur_loser, new_loser_mean)
 
     return carry, results
 

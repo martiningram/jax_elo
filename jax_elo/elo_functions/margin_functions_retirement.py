@@ -1,9 +1,11 @@
 from functools import partial
 
+import jax
 import jax.numpy as jnp
 from jax import jit, grad, hessian
 from jax.scipy.stats import norm, multivariate_normal
 from jax.scipy.special import expit
+from jax.lax import cond
 
 from jax_elo.core import EloFunctions, zero_mean_init_function
 from jax_elo.utils.normals import weighted_sum, logistic_normal_integral_approx
@@ -134,6 +136,8 @@ def parse_theta(flat_theta, summary):
     theta["bo5_factor"] = theta["bo5_factor"] ** 2
     theta["sigma_obs_bo5"] = theta["sigma_obs_bo5"] ** 2
 
+    theta = {x: jnp.array(y) for x, y in theta.items()}
+
     return theta
 
 
@@ -154,11 +158,26 @@ def calculate_win_prob(mu1, mu2, a, y, elo_params, pre_factor=1.0):
     )
 
 
+def tournament_rank_init_function(player_covariates, match_covariates, params):
+
+    offsets = params.theta["tournament_rank_offsets"]
+    cur_rank = match_covariates["tournament_rank"]
+
+    result = cond(
+        cur_rank > 0,
+        lambda _: jax.device_put(offsets)[cur_rank - 1],
+        lambda _: jnp.zeros_like(offsets[0]),
+        cur_rank - 1,
+    )
+
+    return result
+
+
 margin_functions_retirement = EloFunctions(
     log_post_jac_x=jit(grad(calculate_log_posterior)),
     log_post_hess_x=jit(hessian(calculate_log_posterior)),
     marginal_lik_fun=calculate_marginal_lik,
     parse_theta_fun=parse_theta,
     win_prob_fun=jit(partial(calculate_win_prob, pre_factor=b)),
-    init_fun=zero_mean_init_function,
+    init_fun=tournament_rank_init_function,
 )
