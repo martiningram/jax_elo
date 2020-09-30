@@ -5,13 +5,13 @@ from jax import jit, grad, hessian
 from jax.scipy.stats import norm, multivariate_normal
 from jax.scipy.special import expit
 
-from jax_elo.core import EloFunctions, calculate_win_prob
+from jax_elo.core import EloFunctions
 from jax_elo.utils.normals import weighted_sum, logistic_normal_integral_approx
 from jax_elo.utils.flattening import reconstruct
 from jax_elo.utils.linalg import num_mat_elts, pos_def_mat_from_tri_elts
 
 # TODO: Maybe add some of the other optimisation-related stuff
-b = jnp.log(10) / 400.0
+b = 1.0
 
 
 @jit
@@ -135,6 +135,23 @@ def parse_theta(flat_theta, summary):
     theta["sigma_obs_bo5"] = theta["sigma_obs_bo5"] ** 2
 
     return theta
+
+
+def calculate_win_prob(mu1, mu2, a, y, elo_params, pre_factor=1.0):
+    # TODO: Could consider returning nan or something for when it was a retirement.
+
+    margin, was_retirement, bo5 = y
+
+    full_mu = jnp.concatenate([mu1, mu2])
+    full_cov_mat = jnp.kron(jnp.eye(2), elo_params.theta["cov_mat"])
+
+    latent_mean, latent_var = weighted_sum(full_mu, full_cov_mat, a)
+
+    full_pre_factor = pre_factor * (1 + elo_params.theta["bo5_factor"] * bo5)
+
+    return logistic_normal_integral_approx(
+        full_pre_factor * latent_mean, full_pre_factor ** 2 * latent_var
+    )
 
 
 margin_functions_retirement = EloFunctions(
