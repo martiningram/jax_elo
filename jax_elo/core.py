@@ -1,8 +1,8 @@
 import numpy as onp
 import jax.numpy as jnp
 from jax import jit, grad
-from jax.ops import index_update
-from jax.lax import scan
+from jax.ops import index_update, index_add
+from jax.lax import scan, cond
 from collections import defaultdict
 from typing import NamedTuple, Callable, Dict
 from scipy.optimize import minimize
@@ -75,7 +75,7 @@ class EloFunctions(NamedTuple):
         [jnp.ndarray, Dict[str, jnp.ndarray]], Dict[str, jnp.ndarray]
     ]
     win_prob_fun: Callable[..., float]
-    # init_fun: Callable[..., float]
+    init_fun: Callable[..., float]
 
 
 @partial(jit, static_argnums=4)
@@ -421,6 +421,73 @@ def _ratings_lik(*args):
     return calculate_ratings_scan(*args)[1]
 
 
+def _init_scan_function(info, cur_data, init_function, params):
+
+    p1_id = cur_data["p1_id"]
+    p2_id = cur_data["p2_id"]
+
+    times_seen = info["times_seen"]
+    ratings = info["ratings"]
+
+    p1_seen = times_seen[p1_id]
+    p2_seen = times_seen[p2_id]
+
+    p1_rating = ratings[p1_id]
+    p2_rating = ratings[p2_id]
+
+    # Apply initialisation if required
+    new_p1_rating = cond(
+        p1_seen == 0,
+        lambda _: init_function(
+            cur_data["p1_covariates"], cur_data["match_covariates"], params
+        ),
+        lambda x: x,
+        p1_rating,
+    )
+
+    new_p2_rating = cond(
+        p2_seen == 0,
+        lambda _: init_function(
+            cur_data["p2_covariates"], cur_data["match_covariates"], params
+        ),
+        lambda x: x,
+        p2_rating,
+    )
+
+    # Update:
+    info["times_seen"] = index_add(info["times_seen"], p1_id, 1)
+    info["times_seen"] = index_add(info["times_seen"], p2_id, 1)
+
+    info["ratings"] = index_update(info["ratings"], p1_id, new_p1_rating)
+    info["ratings"] = index_update(info["ratings"], p2_id, new_p2_rating)
+
+    return info, jnp.zeros((0,))
+
+
+def _initialise_ratings_scan(
+    winners_array, losers_array, y_full, init_function, params, n_players
+):
+    dim = params.theta["cov_mat"].shape[1]
+    init_ratings = jnp.zeros((n_players, dim))
+    init_seen = jnp.zeros(n_players)
+
+    init_info = {"times_seen": init_seen, "ratings": init_ratings}
+
+    data = {
+        "p1_id": winners_array,
+        "p2_id": losers_array,
+        "p1_covariates": y_full["winner_covariates"],
+        "p2_covariates": y_full["loser_covariates"],
+        "match_covariates": y_full["match_covariates"],
+    }
+
+    scan_fun = lambda info, data: _init_scan_function(info, data, init_function, params)
+
+    init_ratings, _ = scan(scan_fun, init_info, data)
+
+    return init_ratings["ratings"]
+
+
 def _to_optimise(
     x,
     start_params,
@@ -437,7 +504,10 @@ def _to_optimise(
 
     params = update_params(x, start_params, functions, summaries, verbose=verbose)
 
-    init = jnp.zeros((n_players, a_full.shape[1] // 2))
+    # init = jnp.zeros((n_players, a_full.shape[1] // 2))
+    init = _initialise_ratings_scan(
+        winners_array, losers_array, y_full, functions.init_fun, params, n_players
+    )
 
     cur_lik = _ratings_lik(
         winners_array, losers_array, a_full, y_full, functions, params, init
@@ -446,3 +516,21 @@ def _to_optimise(
     cur_prior = prior_fun(params)
 
     return -cur_lik - cur_prior
+
+
+def zero_mean_init_function(player_covariates, match_covariates, params):
+
+    dim = params.theta["cov_mat"].shape[1]
+
+    return jnp.zeros(dim)
+
+
+def get_empty_init_covariates(n_matches):
+    # For use with the zero mean init_function when there is no information to
+    # use to initialise the player abilities
+
+    return {
+        "winner_covariates": {"placeholder": jnp.zeros(n_matches)},
+        "loser_covariates": {"placeholder": jnp.zeros(n_matches)},
+        "match_covariates": {"placeholder": jnp.zeros(n_matches)},
+    }
