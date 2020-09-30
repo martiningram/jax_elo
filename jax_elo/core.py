@@ -64,6 +64,8 @@ class EloFunctions(NamedTuple):
             mean for player 1, the prior mean for player 2, the vector a
             mapping from skills to skill difference, the vector y with
             additional variables, and the parameters in Elo.
+        init_fun: This function takes the covariates y and the parameters as
+            input and returns the initial mean for a player not seen previously.
     """
 
     log_post_jac_x: Callable[..., jnp.ndarray]
@@ -73,6 +75,7 @@ class EloFunctions(NamedTuple):
         [jnp.ndarray, Dict[str, jnp.ndarray]], Dict[str, jnp.ndarray]
     ]
     win_prob_fun: Callable[..., float]
+    # init_fun: Callable[..., float]
 
 
 @partial(jit, static_argnums=4)
@@ -428,7 +431,5 @@ def _to_optimise(
     )
 
     cur_prior = prior_fun(params)
-
-    print(cur_prior, cur_lik)
 
     return -cur_lik - cur_prior

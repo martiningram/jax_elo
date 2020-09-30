@@ -17,7 +17,7 @@ b = 1.0
 @jit
 def calculate_likelihood(x, mu, a, theta, y):
 
-    margin, was_retirement, bo5 = y
+    margin, was_retirement, bo5 = y["margin"], y["was_retirement"], y["bo5"]
 
     sigma_obs = (1 - bo5) * theta["sigma_obs"] + bo5 * theta["sigma_obs_bo5"]
 
@@ -57,7 +57,7 @@ def calculate_likelihood(x, mu, a, theta, y):
 @jit
 def calculate_marginal_lik(x, mu, a, cov_mat, theta, y):
 
-    margin, was_retirement, bo5 = y
+    margin, was_retirement, bo5 = y["margin"], y["was_retirement"], y["bo5"]
 
     sigma_obs = (1 - bo5) * theta["sigma_obs"] + bo5 * theta["sigma_obs_bo5"]
 
@@ -140,7 +140,7 @@ def parse_theta(flat_theta, summary):
 def calculate_win_prob(mu1, mu2, a, y, elo_params, pre_factor=1.0):
     # TODO: Could consider returning nan or something for when it was a retirement.
 
-    margin, was_retirement, bo5 = y
+    margin, was_retirement, bo5 = y["margin"], y["was_retirement"], y["bo5"]
 
     full_mu = jnp.concatenate([mu1, mu2])
     full_cov_mat = jnp.kron(jnp.eye(2), elo_params.theta["cov_mat"])
