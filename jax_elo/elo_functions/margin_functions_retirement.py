@@ -21,10 +21,18 @@ def calculate_likelihood(x, mu, a, theta, y):
 
     margin, was_retirement, bo5 = y["margin"], y["was_retirement"], y["bo5"]
 
+    is_challenger = y["is_challenger"]
+
+    a1 = is_challenger * theta["a1_challenger"] + (1 - is_challenger) * theta["a1"]
+    a2 = is_challenger * theta["a2_challenger"] + (1 - is_challenger) * theta["a2"]
+
     sigma_obs = (1 - bo5) * theta["sigma_obs"] + bo5 * theta["sigma_obs_bo5"]
+    sigma_obs = (1 - is_challenger) * sigma_obs + is_challenger * theta[
+        "sigma_obs_challenger"
+    ]
 
     # If it wasn't a retirement:
-    margin_prob = norm.logpdf(margin, theta["a1"] * (a @ x) + theta["a2"], sigma_obs)
+    margin_prob = norm.logpdf(margin, a1 * (a @ x) + a2, sigma_obs)
 
     win_prob = jnp.log(expit((1 + theta["bo5_factor"] * bo5) * b * a @ x))
 
@@ -60,16 +68,23 @@ def calculate_likelihood(x, mu, a, theta, y):
 def calculate_marginal_lik(x, mu, a, cov_mat, theta, y):
 
     margin, was_retirement, bo5 = y["margin"], y["was_retirement"], y["bo5"]
+    is_challenger = y["is_challenger"]
+
+    a1 = is_challenger * theta["a1_challenger"] + (1 - is_challenger) * theta["a1"]
+    a2 = is_challenger * theta["a2_challenger"] + (1 - is_challenger) * theta["a2"]
 
     sigma_obs = (1 - bo5) * theta["sigma_obs"] + bo5 * theta["sigma_obs_bo5"]
+    sigma_obs = (1 - is_challenger) * sigma_obs + is_challenger * theta[
+        "sigma_obs_challenger"
+    ]
 
     latent_mean, latent_var = weighted_sum(x, cov_mat, a)
 
     # If it wasn't a retirement:
     margin_prob = norm.logpdf(
         margin,
-        theta["a1"] * (latent_mean) + theta["a2"],
-        jnp.sqrt(sigma_obs ** 2 + theta["a1"] ** 2 * latent_var),
+        a1 * (latent_mean) + a2,
+        jnp.sqrt(sigma_obs ** 2 + a1 ** 2 * latent_var),
     )
 
     win_prob = jnp.log(
