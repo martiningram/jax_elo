@@ -188,11 +188,26 @@ def tournament_rank_init_function(player_covariates, match_covariates, params):
     return result
 
 
+def tournament_rank_wildcard_init_function(player_covariates, match_covariates, params):
+
+    base_init = tournament_rank_init_function(
+        player_covariates, match_covariates, params
+    )
+
+    cur_rank = match_covariates["tournament_rank"]
+
+    is_wildcard = player_covariates["is_wildcard"]
+
+    init = base_init + is_wildcard * params.theta["wildcard_offset"][cur_rank]
+
+    return init
+
+
 margin_functions_retirement = EloFunctions(
     log_post_jac_x=jit(grad(calculate_log_posterior)),
     log_post_hess_x=jit(hessian(calculate_log_posterior)),
     marginal_lik_fun=calculate_marginal_lik,
     parse_theta_fun=parse_theta,
     win_prob_fun=jit(partial(calculate_win_prob, pre_factor=b)),
-    init_fun=tournament_rank_init_function,
+    init_fun=tournament_rank_wildcard_init_function,
 )
