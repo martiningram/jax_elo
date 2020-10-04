@@ -76,7 +76,8 @@ class EloFunctions(NamedTuple):
         [jnp.ndarray, Dict[str, jnp.ndarray]], Dict[str, jnp.ndarray]
     ]
     win_prob_fun: Callable[..., float]
-    init_fun: Callable[..., float]
+    init_fun: Callable[..., jnp.ndarray]
+    control_fun: Callable[..., jnp.ndarray]
 
 
 @partial(jit, static_argnums=4)
@@ -180,8 +181,19 @@ def update_ratings(carry, x, elo_functions, elo_params, additional_functions):
 
     cur_winner, cur_loser, cur_a, cur_y = x
 
+    cur_winner_mean, cur_loser_mean = carry[cur_winner], carry[cur_loser]
+
+    # Apply control function
+    cur_winner_mean = elo_functions.control_fun(
+        cur_winner_mean, cur_y.get("winner_control", {}), elo_params
+    )
+
+    cur_loser_mean = elo_functions.control_fun(
+        cur_loser_mean, cur_y.get("loser_control", {}), elo_params
+    )
+
     new_winner_mean, new_loser_mean, lik = concatenate_and_update(
-        carry[cur_winner], carry[cur_loser], cur_a, cur_y, elo_functions, elo_params
+        cur_winner_mean, cur_loser_mean, cur_a, cur_y, elo_functions, elo_params
     )
 
     results = {"lik": lik}
@@ -513,9 +525,9 @@ def _initialise_ratings_scan(
     data = {
         "p1_id": winners_array,
         "p2_id": losers_array,
-        "p1_covariates": y_full["winner_covariates"],
-        "p2_covariates": y_full["loser_covariates"],
-        "match_covariates": y_full["match_covariates"],
+        "p1_covariates": y_full.get("winner_covariates", {}),
+        "p2_covariates": y_full.get("loser_covariates", {}),
+        "match_covariates": y_full.get("match_covariates", {}),
     }
 
     scan_fun = lambda info, data: _init_scan_function(info, data, init_function, params)
@@ -560,6 +572,11 @@ def zero_mean_init_function(player_covariates, match_covariates, params):
     dim = params.theta["cov_mat"].shape[1]
 
     return jnp.zeros(dim)
+
+
+def no_op_control_function(mu, control_inputs, params):
+
+    return mu
 
 
 def get_empty_init_covariates(n_matches):

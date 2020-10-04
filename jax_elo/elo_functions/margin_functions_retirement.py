@@ -7,7 +7,7 @@ from jax.scipy.stats import norm, multivariate_normal
 from jax.scipy.special import expit
 from jax.lax import cond
 
-from jax_elo.core import EloFunctions, zero_mean_init_function
+from jax_elo.core import EloFunctions, zero_mean_init_function, no_op_control_function
 from jax_elo.utils.normals import weighted_sum, logistic_normal_integral_approx
 from jax_elo.utils.flattening import reconstruct
 from jax_elo.utils.linalg import num_mat_elts, pos_def_mat_from_tri_elts
@@ -203,6 +203,14 @@ def tournament_rank_wildcard_init_function(player_covariates, match_covariates, 
     return init
 
 
+def long_break_control_function(mu, control_inputs, params):
+
+    return (
+        control_inputs["is_long_break"] * (mu + params.theta["long_break_addition"])
+        + (1 - control_inputs["is_long_break"]) * mu
+    )
+
+
 margin_functions_retirement = EloFunctions(
     log_post_jac_x=jit(grad(calculate_log_posterior)),
     log_post_hess_x=jit(hessian(calculate_log_posterior)),
@@ -210,4 +218,5 @@ margin_functions_retirement = EloFunctions(
     parse_theta_fun=parse_theta,
     win_prob_fun=jit(partial(calculate_win_prob, pre_factor=b)),
     init_fun=tournament_rank_wildcard_init_function,
+    control_fun=long_break_control_function,
 )
