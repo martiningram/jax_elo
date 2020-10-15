@@ -205,10 +205,12 @@ def tournament_rank_wildcard_init_function(player_covariates, match_covariates, 
 
 def long_break_control_function(mu, control_inputs, params):
 
-    return (
+    mu_new = (
         control_inputs["is_long_break"] * (mu + params.theta["long_break_addition"])
         + (1 - control_inputs["is_long_break"]) * mu
     )
+
+    return mu_new
 
 
 margin_functions_retirement = EloFunctions(
@@ -218,5 +220,5 @@ margin_functions_retirement = EloFunctions(
     parse_theta_fun=parse_theta,
     win_prob_fun=jit(partial(calculate_win_prob, pre_factor=b)),
     init_fun=tournament_rank_wildcard_init_function,
-    control_fun=long_break_control_function,
+    control_fun=no_op_control_function,
 )
