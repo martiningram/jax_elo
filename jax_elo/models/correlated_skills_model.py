@@ -1,14 +1,18 @@
 import pandas as pd
 import jax.numpy as jnp
 
-from jax_elo.core import (EloParams, optimise_elo, calculate_ratings_history,
-                          get_starting_elts)
+from jax_elo.core import (
+    EloParams,
+    optimise_elo,
+    calculate_ratings_history,
+    get_starting_elts,
+)
 from jax_elo.elo_functions.basic import basic_functions
 from jax_elo.elo_functions.margin_functions import margin_functions
 from jax_elo.utils.encoding import encode_players, encode_marks
 
 
-def fit(winners, losers, marks, margins=None, verbose=False):
+def fit(winners, losers, marks, objective_mask=None, margins=None, verbose=False):
     """Fits the parameters of the correlated skills model.
 
     Args:
@@ -16,6 +20,11 @@ def fit(winners, losers, marks, margins=None, verbose=False):
         losers: The names of the losers, as a numpy array.
         marks: The names of the marks played on. This could e.g. be surfaces in
             tennis.
+        objective_mask: If provided, must be a vector of shape [N,], where N is
+            the number of matches. It should be one if the log likelihood of the
+            match update should be used to compute the objective, and zero
+            otherwise. This allows e.g. ignoring an initial set of matches when
+            optimising.
         margins: The margins of victory, as a numpy array. They are optional.
         verbose: If True, prints the progress of the optimisation.
 
@@ -30,18 +39,18 @@ def fit(winners, losers, marks, margins=None, verbose=False):
         start_theta = {}
     else:
         start_theta = {
-            'a1': jnp.sqrt(0.01),
-            'a2': jnp.array(0.),
-            'sigma_obs': jnp.sqrt(0.1)
+            "a1": jnp.sqrt(0.01),
+            "a2": jnp.array(0.0),
+            "sigma_obs": jnp.sqrt(0.1),
         }
 
     dummy_marks, mark_names = encode_marks(marks)
     a = jnp.concatenate([dummy_marks, -dummy_marks], axis=1)
 
     n_marks = len(mark_names)
-    cov_mat = jnp.eye(n_marks) * 100**2
+    cov_mat = jnp.eye(n_marks) * 100 ** 2
     start_elts = get_starting_elts(cov_mat)
-    start_theta['cov_mat'] = start_elts
+    start_theta["cov_mat"] = start_elts
 
     init_params = EloParams(
         theta=start_theta,
@@ -58,8 +67,16 @@ def fit(winners, losers, marks, margins=None, verbose=False):
         functions = margin_functions
 
     opt_result = optimise_elo(
-        init_params, functions, winner_ids, loser_ids, a, y,
-        n_players, verbose=verbose)
+        init_params,
+        functions,
+        winner_ids,
+        loser_ids,
+        a,
+        y,
+        n_players,
+        verbose=verbose,
+        objective_mask=objective_mask,
+    )
 
     return opt_result
 
@@ -95,31 +112,35 @@ def calculate_ratings(parameters, winners, losers, marks, margins=None):
         functions = margin_functions
 
     history, final_ratings = calculate_ratings_history(
-        winners, losers, a_full, y, functions, parameters)
+        winners, losers, a_full, y, functions, parameters
+    )
 
     results = list()
 
     for cur_entry, cur_mark in zip(history, marks):
 
         cur_dict = {
-            'winner': cur_entry['winner'],
-            'loser': cur_entry['loser'],
-            'winner_prior_mean': {
-                x: float(y + 1500) for x, y in zip(
-                    mark_names, cur_entry['prior_mu_winner'])},
-            'loser_prior_mean': {
-                x: float(y + 1500) for x, y in zip(
-                    mark_names, cur_entry['prior_mu_loser'])},
-            'winner_prior_prob': float(cur_entry['prior_win_prob']),
-            'cur_mark': cur_mark
+            "winner": cur_entry["winner"],
+            "loser": cur_entry["loser"],
+            "winner_prior_mean": {
+                x: float(y + 1500)
+                for x, y in zip(mark_names, cur_entry["prior_mu_winner"])
+            },
+            "loser_prior_mean": {
+                x: float(y + 1500)
+                for x, y in zip(mark_names, cur_entry["prior_mu_loser"])
+            },
+            "winner_prior_prob": float(cur_entry["prior_win_prob"]),
+            "cur_mark": cur_mark,
         }
 
         results.append(cur_dict)
 
     final_ratings = {
         player_name: {
-            mark_name: cur_rating + 1500 for mark_name, cur_rating in
-            zip(mark_names, rating_array)}
+            mark_name: cur_rating + 1500
+            for mark_name, cur_rating in zip(mark_names, rating_array)
+        }
         for player_name, rating_array in final_ratings.items()
     }
 
@@ -153,13 +174,13 @@ def predict(ratings, parameters, player, opponent, mark, mark_names):
     cur_a = jnp.concatenate([cur_mark_oh, -cur_mark_oh])
 
     win_prob = margin_functions.win_prob_fun(
-        player_rating, opponent_rating, cur_a, [], parameters)
+        player_rating, opponent_rating, cur_a, [], parameters
+    )
 
     return float(win_prob)
 
 
-def get_player_skill_history(ratings_history, final_ratings_dict, dates,
-                             player_name):
+def get_player_skill_history(ratings_history, final_ratings_dict, dates, player_name):
     """A helper function to extract a player's rating trajectory over time.
 
     Args:
@@ -179,27 +200,25 @@ def get_player_skill_history(ratings_history, final_ratings_dict, dates,
 
     for cur_match, cur_date in zip(ratings_history, dates):
 
-        if player_name not in (cur_match['winner'], cur_match['loser']):
+        if player_name not in (cur_match["winner"], cur_match["loser"]):
             continue
 
         # Otherwise, this is a match we want to use
-        is_winner = cur_match['winner'] == player_name
+        is_winner = cur_match["winner"] == player_name
 
-        cur_dict = {
-            'date': cur_date
-        }
+        cur_dict = {"date": cur_date}
 
         if is_winner:
-            cur_dict.update(cur_match['winner_prior_mean'])
+            cur_dict.update(cur_match["winner_prior_mean"])
         else:
-            cur_dict.update(cur_match['loser_prior_mean'])
+            cur_dict.update(cur_match["loser_prior_mean"])
 
         player_history.append(cur_dict)
 
     final_date = max(dates)
     final_player_rating = final_ratings_dict[player_name]
-    final_player_rating['date'] = final_date
+    final_player_rating["date"] = final_date
 
     player_history.append(final_player_rating)
 
-    return pd.DataFrame(player_history).set_index('date')
+    return pd.DataFrame(player_history).set_index("date")

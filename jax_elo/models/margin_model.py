@@ -4,7 +4,11 @@ import jax.numpy as jnp
 
 from jax_elo.elo_functions.margin_functions import margin_functions
 from jax_elo.core import (
-    EloParams, optimise_elo, calculate_ratings_history, get_starting_elts)
+    EloParams,
+    optimise_elo,
+    calculate_ratings_history,
+    get_starting_elts,
+)
 from jax_elo.utils.encoding import encode_players
 
 
@@ -15,13 +19,18 @@ def _make_1d_a(n_matches):
     return a
 
 
-def fit(winners, losers, margins, verbose=False):
+def fit(winners, losers, margins, objective_mask=None, verbose=False):
     """Fits a model incorporating the margin of victory.
 
     Args:
         winners: The names of the winners, as a numpy array.
         losers: The names of the losers, as a numpy array.
         margins: The margins of victory, as a numpy array.
+        objective_mask: If provided, must be a vector of shape [N,], where N is
+            the number of matches. It should be one if the log likelihood of the
+            match update should be used to compute the objective, and zero
+            otherwise. This allows e.g. ignoring an initial set of matches when
+            optimising.
         verbose: If True, prints the progress of the optimisation.
 
     Returns:
@@ -37,10 +46,10 @@ def fit(winners, losers, margins, verbose=False):
     # remain positive.
     # TODO: Is there a nicer way?
     start_theta = {
-        'a1': jnp.sqrt(0.1),
-        'a2': jnp.array(0.),
-        'sigma_obs': jnp.sqrt(0.1),
-        'cov_mat': cov_mat_elts
+        "a1": jnp.sqrt(0.1),
+        "a2": jnp.array(0.0),
+        "sigma_obs": jnp.sqrt(0.1),
+        "cov_mat": cov_mat_elts,
     }
 
     init_params = EloParams(
@@ -59,8 +68,16 @@ def fit(winners, losers, margins, verbose=False):
     y = jnp.reshape(margins, (-1, 1))
 
     opt_result = optimise_elo(
-        init_params, margin_functions, winner_ids, loser_ids, a, y,
-        n_players, verbose=verbose)
+        init_params,
+        margin_functions,
+        winner_ids,
+        loser_ids,
+        a,
+        y,
+        n_players,
+        verbose=verbose,
+        objective_mask=objective_mask,
+    )
 
     return opt_result
 
@@ -85,22 +102,24 @@ def calculate_ratings(parameters, winners, losers, margins):
     y = margins.reshape(-1, 1)
 
     history, final_ratings = calculate_ratings_history(
-        winners, losers, a_full, y, margin_functions, parameters)
+        winners, losers, a_full, y, margin_functions, parameters
+    )
 
     result_df = list()
 
     for cur_entry in history:
 
         cur_dict = {
-            'winner': cur_entry['winner'],
-            'loser': cur_entry['loser'],
-            'winner_prior_mean': cur_entry['prior_mu_winner'][0] + 1500,
-            'loser_prior_mean': cur_entry['prior_mu_loser'][0] + 1500,
-            'winner_prior_prob': cur_entry['prior_win_prob'],
+            "winner": cur_entry["winner"],
+            "loser": cur_entry["loser"],
+            "winner_prior_mean": cur_entry["prior_mu_winner"][0] + 1500,
+            "loser_prior_mean": cur_entry["prior_mu_loser"][0] + 1500,
+            "winner_prior_prob": cur_entry["prior_win_prob"],
         }
 
-        cur_dict = {x: y if x in ['winner', 'loser'] else float(y) for x, y in
-                    cur_dict.items()}
+        cur_dict = {
+            x: y if x in ["winner", "loser"] else float(y) for x, y in cur_dict.items()
+        }
 
         result_df.append(cur_dict)
 
@@ -129,13 +148,13 @@ def predict(ratings, parameters, player, opponent):
     opponent_rating = jnp.array([ratings[opponent]])
 
     win_prob = margin_functions.win_prob_fun(
-        player_rating, opponent_rating, jnp.array([1, -1]), [], parameters)
+        player_rating, opponent_rating, jnp.array([1, -1]), [], parameters
+    )
 
     return float(win_prob)
 
 
-def get_player_skill_history(ratings_df, final_ratings_dict, dates,
-                             player_name):
+def get_player_skill_history(ratings_df, final_ratings_dict, dates, player_name):
     """A helper function to extract a player's rating trajectory over time.
 
     Args:
@@ -150,22 +169,23 @@ def get_player_skill_history(ratings_df, final_ratings_dict, dates,
     A DataFrame mapping dates to the player ratings on those dates.
     """
 
-    relevant = ((ratings_df['winner'] == player_name) |
-                (ratings_df['loser'] == player_name))
+    relevant = (ratings_df["winner"] == player_name) | (
+        ratings_df["loser"] == player_name
+    )
 
     relevant_df = ratings_df[relevant]
 
     relevant_dates = np.array(dates)[relevant]
 
-    ratings = [x.winner_prior_mean if x.winner == player_name
-               else x.loser_prior_mean for x in relevant_df.itertuples()]
+    ratings = [
+        x.winner_prior_mean if x.winner == player_name else x.loser_prior_mean
+        for x in relevant_df.itertuples()
+    ]
 
     final_date = max(dates)
 
-    history = [{'date': x, 'rating': y}
-               for x, y in zip(relevant_dates, ratings)]
+    history = [{"date": x, "rating": y} for x, y in zip(relevant_dates, ratings)]
 
-    history.append({'date': final_date, 'rating':
-                    final_ratings_dict[player_name]})
+    history.append({"date": final_date, "rating": final_ratings_dict[player_name]})
 
-    return pd.DataFrame(history).set_index('date')
+    return pd.DataFrame(history).set_index("date")
