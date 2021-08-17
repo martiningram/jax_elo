@@ -216,7 +216,7 @@ def calculate_ratings_scan(
     elo_functions,
     elo_params,
     init,
-    additional_funs=[],
+    additional_funs=(),
 ):
     """Calculates the ratings using lax.scan.
 
@@ -325,11 +325,11 @@ def calculate_ratings_history(
         winner_ids, loser_ids, y_full, elo_functions.init_fun, elo_params, len(names)
     )
 
-    additional_funs = [
+    additional_funs = (
         partial(
             extract_history_info, elo_params=elo_params, elo_functions=elo_functions
-        )
-    ]
+        ),
+    )
 
     final_ratings, history = calculate_ratings_scan(
         winner_ids,
@@ -559,7 +559,7 @@ def _to_optimise(
     )
 
     cur_lik = _ratings_lik(
-        winners_array, losers_array, a_full, y_full, functions, params, init, []
+        winners_array, losers_array, a_full, y_full, functions, params, init, ()
     )
 
     cur_prior = prior_fun(params)

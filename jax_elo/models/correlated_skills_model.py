@@ -47,7 +47,9 @@ def fit(winners, losers, marks, margins=None, verbose=False):
     start_elts = get_starting_elts(cov_mat)
     start_theta["cov_mat"] = start_elts
 
-    init_params = EloParams(theta=start_theta,)
+    init_params = EloParams(
+        theta=start_theta,
+    )
 
     winner_ids, loser_ids, names = encode_players(winners, losers)
     n_players = len(names)
@@ -96,7 +98,7 @@ def calculate_ratings(parameters, winners, losers, marks, margins=None):
         y = {"margin": margins}
         functions = margin_functions
 
-    history, final_ratings = calculate_ratings_history(
+    final_ratings, history = calculate_ratings_history(
         winners, losers, a_full, y, functions, parameters
     )
 

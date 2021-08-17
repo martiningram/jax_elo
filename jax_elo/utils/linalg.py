@@ -1,3 +1,4 @@
+import numpy as np
 import jax.numpy as jnp
 from jax.ops import index_update
 
@@ -14,7 +15,7 @@ def pos_def_mat_from_tri_elts(elts, mat_size, jitter=1e-6):
 
 def num_mat_elts(num_triangular_elts):
 
-    sqrt_term = jnp.sqrt(8 * num_triangular_elts + 1)
+    sqrt_term = np.sqrt(8 * num_triangular_elts + 1)
 
     return int((sqrt_term - 1) / 2)
 
