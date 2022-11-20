@@ -1,5 +1,4 @@
 import jax.numpy as jnp
-from jax.ops import index_update
 from jax import jit
 from functools import partial
 import numpy as np
@@ -34,6 +33,6 @@ def lo_tri_from_elements(elements, n):
 
     L = jnp.zeros((n, n))
     indices = jnp.tril_indices(L.shape[0])
-    L = index_update(L, indices, elements)
+    L = L.at[indices].set(elements)
 
     return L
