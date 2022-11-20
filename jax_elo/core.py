@@ -1,7 +1,6 @@
 import numpy as onp
 import jax.numpy as jnp
 from jax import jit, grad
-from jax.ops import index_update
 from jax.lax import scan
 from collections import defaultdict
 from typing import NamedTuple, Callable, Dict
@@ -124,7 +123,7 @@ def calculate_win_prob(mu1, mu2, a, y, elo_params, pre_factor=1.0):
     latent_mean, latent_var = weighted_sum(full_mu, full_cov_mat, a)
 
     return logistic_normal_integral_approx(
-        pre_factor * latent_mean, pre_factor ** 2 * latent_var
+        pre_factor * latent_mean, pre_factor**2 * latent_var
     )
 
 
@@ -180,8 +179,8 @@ def update_ratings(carry, x, elo_functions, elo_params):
         carry[cur_winner], carry[cur_loser], cur_a, cur_y, elo_functions, elo_params
     )
 
-    carry = index_update(carry, cur_winner, new_winner_mean)
-    carry = index_update(carry, cur_loser, new_loser_mean)
+    carry = carry.at[cur_winner].set(new_winner_mean)
+    carry = carry.at[cur_loser].set(new_loser_mean)
 
     return carry, lik
 
