@@ -60,10 +60,10 @@ def fit(winners, losers, marks, objective_mask=None, margins=None, verbose=False
     n_players = len(names)
 
     if margins is None:
-        y = jnp.zeros((n_matches, 0))
+        y = {"placeholder": jnp.zeros((n_matches, 0))}
         functions = basic_functions
     else:
-        y = jnp.reshape(margins, (-1, 1))
+        y = {"margin": margins}
         functions = margin_functions
 
     opt_result = optimise_elo(
@@ -105,13 +105,13 @@ def calculate_ratings(parameters, winners, losers, marks, margins=None):
     n_matches = winners.shape[0]
 
     if margins is None:
-        y = jnp.zeros((n_matches, 0))
+        y = {"placeholder": jnp.zeros((n_matches, 0))}
         functions = basic_functions
     else:
-        y = jnp.reshape(margins, (-1, 1))
+        y = {"margin": margins}
         functions = margin_functions
 
-    history, final_ratings = calculate_ratings_history(
+    final_ratings, history = calculate_ratings_history(
         winners, losers, a_full, y, functions, parameters
     )
 

@@ -5,7 +5,12 @@ from jax import jit, grad, hessian
 from jax.scipy.stats import norm, multivariate_normal
 from jax.scipy.special import expit
 
-from jax_elo.core import EloFunctions, calculate_win_prob
+from jax_elo.core import (
+    EloFunctions,
+    calculate_win_prob,
+    zero_mean_init_function,
+    no_op_control_function,
+)
 from jax_elo.utils.normals import weighted_sum, logistic_normal_integral_approx
 from jax_elo.utils.flattening import reconstruct
 from jax_elo.utils.linalg import num_mat_elts, pos_def_mat_from_tri_elts
@@ -17,7 +22,7 @@ b = jnp.log(10) / 400.0
 @jit
 def calculate_likelihood(x, mu, a, theta, y):
 
-    margin = y[0]
+    margin = y["margin"]
 
     margin_prob = norm.logpdf(
         margin, theta["a1"] * (a @ x) + theta["a2"], theta["sigma_obs"]
@@ -31,7 +36,7 @@ def calculate_likelihood(x, mu, a, theta, y):
 @jit
 def calculate_marginal_lik(x, mu, a, cov_mat, theta, y):
 
-    margin = y[0]
+    margin = y["margin"]
 
     latent_mean, latent_var = weighted_sum(x, cov_mat, a)
 
@@ -81,4 +86,9 @@ margin_functions = EloFunctions(
     marginal_lik_fun=calculate_marginal_lik,
     parse_theta_fun=parse_theta,
     win_prob_fun=jit(partial(calculate_win_prob, pre_factor=b)),
+<<<<<<< HEAD
+=======
+    init_fun=zero_mean_init_function,
+    control_fun=no_op_control_function,
+>>>>>>> feat/control-input
 )

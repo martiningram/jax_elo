@@ -52,9 +52,7 @@ def fit(winners, losers, margins, objective_mask=None, verbose=False):
         "cov_mat": cov_mat_elts,
     }
 
-    init_params = EloParams(
-        theta=start_theta,
-    )
+    init_params = EloParams(theta=start_theta,)
 
     # Get winner and loser ids
     winner_ids, loser_ids, names = encode_players(winners, losers)
@@ -64,8 +62,7 @@ def fit(winners, losers, margins, objective_mask=None, verbose=False):
 
     a = _make_1d_a(n_matches)
 
-    # y will just be the margins, but with an extra dimension
-    y = jnp.reshape(margins, (-1, 1))
+    y = {"margin": margins}
 
     opt_result = optimise_elo(
         init_params,
@@ -99,7 +96,7 @@ def calculate_ratings(parameters, winners, losers, margins):
     """
 
     a_full = _make_1d_a(winners.shape[0])
-    y = margins.reshape(-1, 1)
+    y = {"margin": margins}
 
     history, final_ratings = calculate_ratings_history(
         winners, losers, a_full, y, margin_functions, parameters

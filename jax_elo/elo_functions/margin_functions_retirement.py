@@ -1,28 +1,38 @@
 from functools import partial
 
+import jax
 import jax.numpy as jnp
 from jax import jit, grad, hessian
 from jax.scipy.stats import norm, multivariate_normal
 from jax.scipy.special import expit
+from jax.lax import cond
 
-from jax_elo.core import EloFunctions, calculate_win_prob
+from jax_elo.core import EloFunctions, zero_mean_init_function, no_op_control_function
 from jax_elo.utils.normals import weighted_sum, logistic_normal_integral_approx
 from jax_elo.utils.flattening import reconstruct
 from jax_elo.utils.linalg import num_mat_elts, pos_def_mat_from_tri_elts
 
 # TODO: Maybe add some of the other optimisation-related stuff
-b = jnp.log(10) / 400.0
+b = 1.0
 
 
 @jit
 def calculate_likelihood(x, mu, a, theta, y):
 
-    margin, was_retirement, bo5 = y
+    margin, was_retirement, bo5 = y["margin"], y["was_retirement"], y["bo5"]
+
+    is_challenger = y["is_challenger"]
+
+    a1 = is_challenger * theta["a1_challenger"] + (1 - is_challenger) * theta["a1"]
+    a2 = is_challenger * theta["a2_challenger"] + (1 - is_challenger) * theta["a2"]
 
     sigma_obs = (1 - bo5) * theta["sigma_obs"] + bo5 * theta["sigma_obs_bo5"]
+    sigma_obs = (1 - is_challenger) * sigma_obs + is_challenger * theta[
+        "sigma_obs_challenger"
+    ]
 
     # If it wasn't a retirement:
-    margin_prob = norm.logpdf(margin, theta["a1"] * (a @ x) + theta["a2"], sigma_obs)
+    margin_prob = norm.logpdf(margin, a1 * (a @ x) + a2, sigma_obs)
 
     win_prob = jnp.log(expit((1 + theta["bo5_factor"] * bo5) * b * a @ x))
 
@@ -57,17 +67,24 @@ def calculate_likelihood(x, mu, a, theta, y):
 @jit
 def calculate_marginal_lik(x, mu, a, cov_mat, theta, y):
 
-    margin, was_retirement, bo5 = y
+    margin, was_retirement, bo5 = y["margin"], y["was_retirement"], y["bo5"]
+    is_challenger = y["is_challenger"]
+
+    a1 = is_challenger * theta["a1_challenger"] + (1 - is_challenger) * theta["a1"]
+    a2 = is_challenger * theta["a2_challenger"] + (1 - is_challenger) * theta["a2"]
 
     sigma_obs = (1 - bo5) * theta["sigma_obs"] + bo5 * theta["sigma_obs_bo5"]
+    sigma_obs = (1 - is_challenger) * sigma_obs + is_challenger * theta[
+        "sigma_obs_challenger"
+    ]
 
     latent_mean, latent_var = weighted_sum(x, cov_mat, a)
 
     # If it wasn't a retirement:
     margin_prob = norm.logpdf(
         margin,
-        theta["a1"] * (latent_mean) + theta["a2"],
-        jnp.sqrt(sigma_obs ** 2 + theta["a1"] ** 2 * latent_var),
+        a1 * (latent_mean) + a2,
+        jnp.sqrt(sigma_obs ** 2 + a1 ** 2 * latent_var),
     )
 
     win_prob = jnp.log(
@@ -134,7 +151,66 @@ def parse_theta(flat_theta, summary):
     theta["bo5_factor"] = theta["bo5_factor"] ** 2
     theta["sigma_obs_bo5"] = theta["sigma_obs_bo5"] ** 2
 
+    theta = {x: jnp.array(y) for x, y in theta.items()}
+
     return theta
+
+
+def calculate_win_prob(mu1, mu2, a, y, elo_params, pre_factor=1.0):
+    # TODO: Could consider returning nan or something for when it was a retirement.
+
+    margin, was_retirement, bo5 = y["margin"], y["was_retirement"], y["bo5"]
+
+    full_mu = jnp.concatenate([mu1, mu2])
+    full_cov_mat = jnp.kron(jnp.eye(2), elo_params.theta["cov_mat"])
+
+    latent_mean, latent_var = weighted_sum(full_mu, full_cov_mat, a)
+
+    full_pre_factor = pre_factor * (1 + elo_params.theta["bo5_factor"] * bo5)
+
+    return logistic_normal_integral_approx(
+        full_pre_factor * latent_mean, full_pre_factor ** 2 * latent_var
+    )
+
+
+def tournament_rank_init_function(player_covariates, match_covariates, params):
+
+    offsets = params.theta["tournament_rank_offsets"]
+    cur_rank = match_covariates["tournament_rank"]
+
+    result = cond(
+        cur_rank > 0,
+        lambda _: jax.device_put(offsets)[cur_rank - 1],
+        lambda _: jnp.zeros_like(offsets[0]),
+        cur_rank - 1,
+    )
+
+    return result
+
+
+def tournament_rank_wildcard_init_function(player_covariates, match_covariates, params):
+
+    base_init = tournament_rank_init_function(
+        player_covariates, match_covariates, params
+    )
+
+    cur_rank = match_covariates["tournament_rank"]
+
+    is_wildcard = player_covariates["is_wildcard"]
+
+    init = base_init + is_wildcard * params.theta["wildcard_offset"][cur_rank]
+
+    return init
+
+
+def long_break_control_function(mu, control_inputs, params):
+
+    mu_new = (
+        control_inputs["is_long_break"] * (mu + params.theta["long_break_addition"])
+        + (1 - control_inputs["is_long_break"]) * mu
+    )
+
+    return mu_new
 
 
 margin_functions_retirement = EloFunctions(
@@ -143,4 +219,6 @@ margin_functions_retirement = EloFunctions(
     marginal_lik_fun=calculate_marginal_lik,
     parse_theta_fun=parse_theta,
     win_prob_fun=jit(partial(calculate_win_prob, pre_factor=b)),
+    init_fun=tournament_rank_wildcard_init_function,
+    control_fun=no_op_control_function,
 )
