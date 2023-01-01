@@ -86,9 +86,6 @@ margin_functions = EloFunctions(
     marginal_lik_fun=calculate_marginal_lik,
     parse_theta_fun=parse_theta,
     win_prob_fun=jit(partial(calculate_win_prob, pre_factor=b)),
-<<<<<<< HEAD
-=======
     init_fun=zero_mean_init_function,
     control_fun=no_op_control_function,
->>>>>>> feat/control-input
 )
